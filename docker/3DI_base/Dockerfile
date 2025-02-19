@@ -79,10 +79,3 @@ RUN cd /app/build && chmod +x process_video.py multiframe_from_images.py
 # Add the model file and prepare it to be used by 3DI
 COPY 01_MorphableModel.mat /app/build/models/raw/
 RUN cd /app/build/models && python3 prepare_BFM.py
-
-# Add entrypoint script to handle first-time setup
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Set the default command to the entrypoint script
-ENTRYPOINT ["/entrypoint.sh"]
