@@ -53,6 +53,22 @@ def read_pose(file):
 
     return dict
 
+
+def read_pose_lite(file):
+    _data = np.loadtxt(file)
+    #first three are translation ignore middle three last three are angles
+    _data = _data[:, [0, 1, 2, 3, 4, 5]]
+    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
+
+    dict = {
+        'frame count': data.shape[0],
+        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
+        'dimension': 3,
+        'data': data
+    }
+
+    return dict
+
     
 def read_expression(file):
     _data = np.loadtxt(file)
