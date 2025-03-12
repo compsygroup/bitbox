@@ -12,13 +12,11 @@ Bitbox itself has minimum requirements, but it relies on face/body backends to g
 
 The current version of Bitbox supports two face backends, namely 3DI and 3DI-lite. While 3DI provides more detailed outputs (e.g., full 3D model of the face), 3DI-lite is much faster and more robust to occlusions, etc. If your images don't have significant occlusions and you don't need a faster solution, we recommend using 3DI.
 
-If you can install C++/CUDA codes from the source code, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and will be more convenient for using Bitbox.
+**The recommended way to install backends is to use our Docker images** as explained below. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and will be more convenient for using Bitbox.
 
 Similarly, 3DI-lite can be installed from ... (COMING SOON)
 
-The recommended way to install backends is to use our Docker images. Using Docker is usually very straightforward; however, 3DI requires downloading an external face model (you need to register individually and request access) and updating our image with this model.
-
-We have a pre-compiled Docker image including both 3DI and 3DI-lite, but with a specific CUDA driver (i.e., 11.4.3). If your GPU can work with this version of CUDA, please use our image.
+Using Docker is usually very straightforward; however, 3DI requires downloading an external face model (you need to register individually and request access) and updating our image with this model.
 
 1. Download the [Dockerfile](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/3DI/Dockerfile)
 2. Download the [3DMM model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2&id=downloads)
