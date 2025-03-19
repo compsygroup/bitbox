@@ -1,6 +1,9 @@
 # Base image including 3DI but not the face model file
 FROM compsygroup/3di:0.3.0-cuda12.2.2-cudnn8-opencv4.8.1-ubuntu20.04
 
+# Disable certificate verification for git
+RUN git config --global http.sslVerify false
+
 # Add the model file 
 COPY 01_MorphableModel.mat /app/3DI/models/raw/
 COPY 01_MorphableModel.mat /app/3DI_lite/data/raw/
@@ -28,9 +31,9 @@ RUN mkdir /app/3DI_lite/checkpoints
 RUN mkdir /app/3DI_lite/models/checkpoints
 
 WORKDIR /app/3DI_lite
-RUN wget https://sariyanidi.com/dbox/3DIlite/backbone.pth -P ./checkpoints/
-RUN wget https://sariyanidi.com/dbox/3DIlite/medium_model15.00combined_celeb_ytfacesresnet50139979True1e-05-2-BFMmm-23660UNL_STORED.pth -P ./checkpoints/
-RUN wget https://sariyanidi.com/dbox/3DIlite/sep_modelv3SP15.00combined_celeb_ytfacesresnet501e-052True139979_V2.pth -P ./checkpoints/
-RUN wget https://sariyanidi.com/dbox/3DIlite/resnet50-0676ba61.pth -P ./models/checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/backbone.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/medium_model15.00combined_celeb_ytfacesresnet50139979True1e-05-2-BFMmm-23660UNL_STORED.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/sep_modelv3SP15.00combined_celeb_ytfacesresnet501e-052True139979_V2.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/resnet50-0676ba61.pth -P ./models/checkpoints/
 
 WORKDIR /app
