@@ -8,7 +8,7 @@ COPY 01_MorphableModel.mat /app/3DI_lite/data/raw/
 WORKDIR /app/3DI/models
 RUN tar -xvzf lmodels.tar.gz
 WORKDIR /app/3DI/models/raw
-RUN wget https://raw.githubusercontent.com/Juyong/3DFace/master/Exp_Pca.bin
+RUN wget --no-check-certificate https://raw.githubusercontent.com/Juyong/3DFace/master/Exp_Pca.bin
 RUN cp /app/3DI/models/raw/Exp_Pca.bin /app/3DI_lite/data/raw/.
 
 # Prepare models to be used by 3DI and 3DI-lite
