@@ -8,7 +8,7 @@ Please refer to our [Wiki](https://github.com/compsygroup/bitbox/wiki) for furth
 
 Bitbox itself has minimum requirements, but it relies on face/body backends to generate expression/movement signals. These backends usually have more requirements. We highly recommend using our Docker images to install these backends as installing them from source code may prove difficult for some. **Unfortunately, for currently supported backends, you need NVIDIA GPUs.** New backends with CPU support are coming soon. 
 
-The current version of Bitbox supports two face backends, namely 3DI and 3DI-lite. While 3DI provides more detailed outputs (e.g., full 3D model of the face), 3DI-lite is much faster and more robust to occlusions, etc. If your images don't have significant occlusions and you don't need a faster solution, we recommend using 3DI. **The recommended way to install backends is to use our Docker images** as explained below. 
+The current version of Bitbox supports two face backends, namely 3DI and 3DI-lite. While 3DI provides more detailed outputs (e.g., full 3D model of the face), 3DI-lite is much faster and more robust to occlusions, etc. If your images don't have significant occlusions and you don't need a faster solution, we recommend using 3DI. 
 
 ### Installing Face Backends Using Docker (Recommended)
 Using Docker is usually very straightforward; however, 3DI requires downloading an external face model (you need to register individually and request access) and updating our image with this model.
@@ -24,7 +24,7 @@ Using Docker is usually very straightforward; however, 3DI requires downloading 
 5. That's it! You will also need to set an environment variable `DOCKER_3DI`, which will be explained below.
 
 ### Installing Face Backends Natively
-If you can install C++/CUDA codes from the source code, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
+**The recommended way to install backends is to use our Docker images** as explained above. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
 
 Similarly, 3DI-lite can be installed from ... (COMING SOON)
 
