@@ -6,34 +6,34 @@ Please refer to our [Wiki](https://github.com/compsygroup/bitbox/wiki) for furth
 
 ## Installation
 
-Bitbox itself has minimum requirements, but it relies on face/body backends to generate expression/movement signals. These backends usually have more requirements. We highly recommend using our Docker images to install these backends as installing them from source code may prove difficult for some. Unfortunately, for currently supported backends, you need NVIDIA GPUs. New backends with CPU support are coming soon. 
+Bitbox itself has minimum requirements, but it relies on face/body backends to generate expression/movement signals. These backends usually have more requirements. We highly recommend using our Docker images to install these backends as installing them from source code may prove difficult for some. **Unfortunately, for currently supported backends, you need NVIDIA GPUs.** New backends with CPU support are coming soon. 
 
-### Installing Face Backends 
+The current version of Bitbox supports two face backends, namely 3DI and 3DI-lite. While 3DI provides more detailed outputs (e.g., full 3D model of the face), 3DI-lite is much faster and more robust to occlusions, etc. If your images don't have significant occlusions and you don't need a faster solution, we recommend using 3DI. 
 
-The current version of Bitbox supports two face backends, namely 3DI and 3DI-lite. While 3DI provides more detailed outputs (e.g., full 3D model of the face), 3DI-lite is much faster and more robust to occlusions, etc. If your images don't have significant occlusions and you don't need a faster solution, we recommend using 3DI.
-
-**The recommended way to install backends is to use our Docker images** as explained below. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and will be more convenient for using Bitbox.
-
-Similarly, 3DI-lite can be installed from ... (COMING SOON)
-
+### Installing Face Backends Using Docker (Recommended)
 Using Docker is usually very straightforward; however, 3DI requires downloading an external face model (you need to register individually and request access) and updating our image with this model.
 
-1. Download the [Dockerfile](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/3DI/Dockerfile)
-2. Download the [3DMM model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2&id=downloads)
-3. Place the Dockerfile and the face model (`01_MorphableModel.mat`) in the same directory
-4. Within this directory, run the following command to copy the face model
+1. Download the Dockerfile. We have two options for [CUDA 11.4.3](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda11.4_cv4.5/Dockerfile) or [CUDA 12.2.2](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda12.2_cv4.8/Dockerfile). Select the one that is most compatible with your NVIDIA GPU.
+2. Register and download the [face model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2&id=downloads). Unfortunately this may take some time. We cannot help with this step.
+3. Place the Dockerfile and the face model you downloaded (`01_MorphableModel.mat`) in the same directory
+4. Within this directory, run the following command build the image
     ```bash
-    docker build -t 3di:20250220-basel2009 . 
+    docker build -t 3di:0.3.0-basel2009 . 
     ```
-    The first parameter `3di:20250220-basel2009` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
+    The first parameter `3di:0.3.0-basel2009` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
 5. That's it! You will also need to set an environment variable `DOCKER_3DI`, which will be explained below.
+
+### Installing Face Backends Natively
+**The recommended way to install backends is to use our Docker images** as explained above. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
+
+Similarly, 3DI-lite can be installed from ... (COMING SOON)
 
 ### Installing Bitbox
 To install Bitbox, follow these steps. **You will need to use python 3.8 or higher**. 
 
 1. Create a virtual environment and activate it:
     ```bash
-    python3 -m venv env
+    python3.8 -m venv env
     source env/bin/activate
     ```
     Note that this will create a virtual environment named `env` in the current directory. You can use any name, and you can install the virtual environment anywhere you like. Just don't forget where you installed it. For the following steps, we will assume you have activated the virtual environment.
@@ -59,7 +59,7 @@ To install Bitbox, follow these steps. **You will need to use python 3.8 or high
     python setup.py install
     ```
 
-6. If you are not using Docker, set the environment variable `PATH_3DI` to indicate the directory in which 3DI was installed. We recommend setting it in .bahsrc (on Lunux/Mac) or in System's Environment Variables (on Windows).
+6. If you are not using Docker, set the environment variable `PATH_3DI` to indicate the directory in which 3DI was installed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
 
     - **Linux**:
       ```bash
@@ -76,21 +76,21 @@ To install Bitbox, follow these steps. **You will need to use python 3.8 or high
       export PATH_3DI=/path/to/3DI/directory
       ```
 
-7. If you are using Docker, set the environment variable `DOCKER_3DI` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Lunux/Mac) or in System's Environment Variables (on Windows).
+7. If you are using Docker, set the environment variable `DOCKER_3DI` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
 
     - **Linux**:
       ```bash
-      export DOCKER_3DI=3di:20250220-basel2009
+      export DOCKER_3DI=3di:0.3.0-basel2009
       ```
 
     - **Windows** (Command Prompt):
       ```bash
-      set DOCKER_3DI=3di:20250220-basel2009
+      set DOCKER_3DI=3di:0.3.0-basel2009
       ```
 
     - **Mac**:
       ```bash
-      export DOCKER_3DI=3di:20250220-basel2009
+      export DOCKER_3DI=3di:0.3.0-basel2009
       ```
 
 Now you are ready to use Bitbox!
@@ -103,7 +103,7 @@ Once you are done with installation, you can use Bitbox by
     ```bash
     source env/bin/activate
     ```
-2. Set the environment variable `PATH_3DI` or `DOCKER_3DI` if you have not set them already in .bahsrc (on Lunux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
+2. Set the environment variable `PATH_3DI` or `DOCKER_3DI` if you have not set them already in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
 
 3. Import the library in your Python code:
  ```python
