@@ -178,8 +178,13 @@ class FaceProcessor3DI:
             output_file_idx = [output_file_idx]
        
         # check if the output file already exists, if not run the executable
+        if self.lite:
+            backend = '3DI-lite'
+        else:
+            backend = '3DI'
+            
         self.base_metadata = {
-            'backend' : '3DI',
+            'backend' : backend,
             'morphable_model': self.model_morphable,
             'camera': self.model_camera,
             'landmark': self.model_landmark,
