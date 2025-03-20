@@ -87,9 +87,11 @@ class FaceProcessor3DI:
         # supported video extensions
         supported_extensions = ['mp4', 'avi', 'mpeg']
         
-        # Check if input_file is a relative path and make it absolute
+        # Check if input & output are relative paths and make them absolute
         if not os.path.isabs(input_file):
             input_file = os.path.abspath(input_file)
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.abspath(output_dir)
         
         # set the working directory
         # @TODO: remove this part when the 3DI code is updated by Vangelis
