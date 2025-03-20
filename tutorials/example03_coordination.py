@@ -3,13 +3,10 @@ from bitbox.signal_processing import peak_detection
 from bitbox.coordination import intra_person_coordination
 from bitbox.expressions import expressivity
 
-import os
 import numpy as np
 
-# Please make sure you give the correct full (not relative) path
-DIR = '/home/tuncb/Works/code/compsy/bitbox/tutorials'
-input_file = os.path.join(DIR, 'data/elaine.mp4')
-output_dir = os.path.join(DIR, 'output')
+input_file = 'data/elaine.mp4'
+output_dir = 'output'
 
 # define a face processor
 processor = FaceProcessor3DI()
