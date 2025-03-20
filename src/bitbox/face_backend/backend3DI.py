@@ -73,12 +73,6 @@ class FaceProcessor3DI:
                     
                 if self.liteDIR is None:
                     raise ValueError("3DI-Lite package is not found. Please make sure you defined PATH_3DI_LITE system variable.")
-            
-    
-        if not self.use_docker:
-            # set the working directory
-            # @TODO: remove this line when the 3DI code is updated by Vangelis
-            os.chdir(self.execDIR)
         
         # prepare configuration files
         if self.fast:
@@ -92,10 +86,19 @@ class FaceProcessor3DI:
     def io(self, input_file, output_dir):
         # supported video extensions
         supported_extensions = ['mp4', 'avi', 'mpeg']
+        
+        # Check if input_file is a relative path and make it absolute
+        if not os.path.isabs(input_file):
+            input_file = os.path.abspath(input_file)
+        
+        # set the working directory
+        # @TODO: remove this part when the 3DI code is updated by Vangelis
+        if not self.use_docker:
+            os.chdir(self.execDIR)
 
         # check if input file exists
         if not os.path.exists(input_file):
-            raise ValueError("Input file does not exist. Please check the path and permissions.")
+            raise ValueError("Input file %s does not exist. Please check the path and permissions."%input_file)
         
         # check if input file extension is supported
         ext = input_file.split('.')[-1].lower()
