@@ -80,9 +80,17 @@ class FaceProcessor3DI:
         else:
             cfgid = 1
         
-        self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark)) 
+        self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
+        
+        # prepare metadata
+        self.base_metadata = {
+            'backend' : '3DI-lite' if self.lite else '3DI',
+            'morphable_model': self.model_morphable,
+            'camera': self.model_camera,
+            'landmark': self.model_landmark,
+            'fast': self.fast
+        }
                 
-    
     def io(self, input_file, output_dir):
         # supported video extensions
         supported_extensions = ['mp4', 'avi', 'mpeg']
@@ -138,7 +146,7 @@ class FaceProcessor3DI:
         self.file_pose_smooth = os.path.join(self.dir_output, self.file_input_base + '_pose_smooth.3DI') # smoothed pose info
         self.file_landmarks_canonicalized = os.path.join(self.dir_output, self.file_input_base + '_landmarks_canonicalized.3DI') # canonicalized landmarks
         self.file_expression_localized = os.path.join(self.dir_output, self.file_input_base + '_expression_localized.3DI') # localized expressions
-    
+           
     
     def _local_file(self, file_path):
         if self.use_docker:
@@ -183,19 +191,6 @@ class FaceProcessor3DI:
             output_file_idx = [output_file_idx]
        
         # check if the output file already exists, if not run the executable
-        if self.lite:
-            backend = '3DI-lite'
-        else:
-            backend = '3DI'
-            
-        self.base_metadata = {
-            'backend' : backend,
-            'morphable_model': self.model_morphable,
-            'camera': self.model_camera,
-            'landmark': self.model_landmark,
-            'fast': self.fast
-        }  
-        
         file_exits = 0
         for idx in output_file_idx:
             tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=True)
