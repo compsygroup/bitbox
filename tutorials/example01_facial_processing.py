@@ -1,10 +1,10 @@
-from bitbox.face_backend import FaceProcessor3DI
+from bitbox.face_backend import FaceProcessor3DIlite as FP
 
 input_file = 'data/elaine.mp4'
 output_dir = 'output'
 
 # define a face processor
-processor = FaceProcessor3DI(lite=False)
+processor = FP()
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
