@@ -10,7 +10,7 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output=True, server=None):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None):
         # Run the parent class init
         super().__init__(return_output=return_output, server=server)
         
@@ -85,7 +85,9 @@ class FaceProcessor3DI(FaceProcessor):
                       "face detection",
                       output_file_idx=-1)
                
-        if self.return_output:
+        if self.return_output == 'file':
+            return self._local_file(self.file_rectangles)
+        elif self.return_output == 'dict':
             return read_rectangles(self._local_file(self.file_rectangles))
         else:
             return None
@@ -93,15 +95,17 @@ class FaceProcessor3DI(FaceProcessor):
             
     def detect_landmarks(self):
         # check if face detection was run and successful
-        if self.cache.check_file(self._local_file(self.file_rectangles), self.base_metadata) > 0:
-            raise ValueError("Face detection is not run or failed. Please run face detection first.")
+        # if self.cache.check_file(self._local_file(self.file_rectangles), self.base_metadata) > 0:
+        #     raise ValueError("Face detection is not run or failed. Please run face detection first.")
         
         self._execute('video_detect_landmarks',
                       [self.file_input, self.file_rectangles, self.file_landmarks, self.config_landmarks],
                       "landmark detection",
                       output_file_idx=-2)
         
-        if self.return_output:
+        if self.return_output == 'file':
+            return self._local_file(self.file_landmarks)
+        elif self.return_output == 'dict':
             return read_landmarks(self._local_file(self.file_landmarks))
         else:
             return None
@@ -109,8 +113,8 @@ class FaceProcessor3DI(FaceProcessor):
 
     def fit(self):
         # check if landmark detection was run and successful
-        if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
-            raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
+        # if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
+        #     raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
         
         # STEP 1: learn identity   
         self._execute('video_learn_identity',
@@ -147,7 +151,9 @@ class FaceProcessor3DI(FaceProcessor):
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
         
-        if self.return_output:
+        if self.return_output == 'file':
+            return self._local_file(self.file_expression_smooth), self._local_file(self.file_pose_smooth), self._local_file(self.file_landmarks_canonicalized)
+        elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             out_pose = read_pose(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
@@ -167,7 +173,9 @@ class FaceProcessor3DI(FaceProcessor):
                     "localized expression estimation",
                     output_file_idx=-4)
         
-        if self.return_output:
+        if self.return_output == 'file':
+            return self._local_file(self.file_expression_localized)
+        elif self.return_output == 'dict':
             return read_expression(self._local_file(self.file_expression_localized))
         else:
             return None
@@ -180,14 +188,11 @@ class FaceProcessor3DI(FaceProcessor):
         exp_glob, pose, land_can = self.fit()
         exp_loc = self.localized_expressions(normalize=normalize)
         
-        if self.return_output:
-            return rect, land, exp_glob, pose, land_can, exp_loc
-        else:
-            return None, None, None, None, None, None
+        return rect, land, exp_glob, pose, land_can, exp_loc
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output=True, server=False):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=False):
         # Run the parent class init
         super().__init__(camera_model=camera_model,
                          landmark_model=landmark_model,
@@ -260,7 +265,9 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
         
-        if self.return_output:
+        if self.return_output == 'file':
+            return self._local_file(self.file_expression_smooth), self._local_file(self.file_pose_smooth), self._local_file(self.file_landmarks_canonicalized)
+        elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             out_pose = read_pose_lite(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
@@ -290,7 +297,7 @@ class FaceProcessor3DITest(FaceProcessor3DI):
         
         self.cache = FileCache()
         
-        self.return_output = False
+        self.return_output = None
         
         self.execDIR = os.getcwd()
         
