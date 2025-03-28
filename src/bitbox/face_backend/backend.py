@@ -89,56 +89,6 @@ class FaceProcessor:
             return os.path.join(self.output_dir, os.path.basename(file_path))
         else:
             return file_path
-              
-              
-    def _communicate(self, endpoint, files=None, data=None):
-        url = self.API_url + endpoint
-                
-        response = requests.post(url, files=files, data=data)
-
-        if response.status_code == 200:
-            content_type = response.headers.get('Content-Type', '')
-
-            # extract the ZIP file that is returned from the server
-            if 'application/zip' in content_type:
-                try: 
-                    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                        # extract the file
-                        z.extractall(self.output_dir)
-                        
-                        # change the remote file names to the local file names
-                        for filename in os.listdir(self.output_dir):
-                            if "input_file" in filename:
-                                # rename the file
-                                new_filename = os.path.join(self.output_dir, filename.replace("input_file", self.file_input_base))
-                                os.rename(
-                                    os.path.join(self.output_dir, filename),
-                                    new_filename
-                                )
-                                # we will create their JSON files here to prevent multiple calls to the server
-                                additional_metadata = {
-                                    'cmd': 'API call',
-                                    'input': self._local_file(self.file_input),
-                                    'output': self.output_dir
-                                }
-                                metadata = {**self.base_metadata, **additional_metadata}              
-                                self.cache.store_metadata(self._local_file(new_filename), metadata)
-                
-                except zipfile.BadZipFile:
-                    raise ValueError("Invalid ZIP file received from the server.")
-                except OSError as e:
-                    raise ValueError(f"File renaming error: {e}")
-            else:
-                try:
-                    output = response.json()
-                    if output:
-                        return output
-                except requests.JSONDecodeError:
-                    print("Invalid JSON response")
-        else:
-            print(f"Request failed with status {response.status_code}: {response.text}")
-
-        return None
           
           
     def io(self, input_file, output_dir):
@@ -201,17 +151,66 @@ class FaceProcessor:
         if self.API:
             files = {'input_file': open(input_file, 'rb')}
             data = {
-                'file_hash': self.base_metadata['input_hash'],
-                'config': json.dumps(self.API_config)
+                'file_hash': self.base_metadata['input_hash']
             }
             
             # get session id
-            output = self._communicate('prepare_session', files=files, data=data)
+            output = self._remote_run_command('prepare_session', files=files, data=data)
             if output and ('session_id' in output):
                 self.API_session = output["session_id"]
                 print(f"Remote session with ID {self.API_session} was initiated.")
             else:
                 raise ValueError("Failed to create a remote session at the server.")
+    
+    
+    def _remote_run_command(self, endpoint, files=None, data=None):
+        url = self.API_url + endpoint
+                
+        response = requests.post(url, files=files, data=data)
+
+        if response.status_code == 200:
+            content_type = response.headers.get('Content-Type', '')
+
+            # extract the ZIP file that is returned from the server
+            if 'application/zip' in content_type:
+                try: 
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                        # extract the file
+                        z.extractall(self.output_dir)
+                        
+                        # change the remote file names to the local file names
+                        for filename in os.listdir(self.output_dir):
+                            if "input_file" in filename:
+                                # rename the file
+                                new_filename = os.path.join(self.output_dir, filename.replace("input_file", self.file_input_base))
+                                os.rename(
+                                    os.path.join(self.output_dir, filename),
+                                    new_filename
+                                )
+                                # we will create their JSON files here to prevent multiple calls to the server
+                                additional_metadata = {
+                                    'cmd': 'API call',
+                                    'input': self._local_file(self.file_input),
+                                    'output': self.output_dir
+                                }
+                                metadata = {**self.base_metadata, **additional_metadata}              
+                                self.cache.store_metadata(self._local_file(new_filename), metadata)
+                
+                except zipfile.BadZipFile:
+                    raise ValueError("Invalid ZIP file received from the server.")
+                except OSError as e:
+                    raise ValueError(f"File renaming error: {e}")
+            else:
+                try:
+                    output = response.json()
+                    if output:
+                        return output
+                except requests.JSONDecodeError:
+                    print("Invalid JSON response")
+        else:
+            print(f"Request failed with status {response.status_code}: {response.text}")
+
+        return None
            
     
     def _run_command(self, executable, parameters, output_file_idx, system_call):                  
@@ -310,18 +309,16 @@ class FaceProcessor:
                 t0 = time()
             
             # run the command
-            # @TODO: with fit method, the first call to _execute brings all the files but not JSONs
-            # @TODO: thus, all other calls also made (JSON not found) and bring the files again
-            # @TODO: to prevent multiple calls, generate JSONs for all files in the first call
             if self.API: # Running on a remote server
                 cmd = 'API call'
                 # make the call to the server
                 data = {
                     'session_id': self.API_session,
                     'processor_class': self.__class__.__name__,
-                    'method': caller_name
+                    'method': caller_name,
+                    'config': json.dumps(self.API_config)
                 }
-                self._communicate('execute', data=data)
+                self._remote_run_command('execute', data=data)
             else: # Running locally
                 cmd = self._run_command(executable, parameters, output_file_idx, system_call)
             

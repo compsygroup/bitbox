@@ -96,8 +96,8 @@ class FaceProcessor3DI(FaceProcessor):
             
     def detect_landmarks(self):
         # check if face detection was run and successful
-        # if self.cache.check_file(self._local_file(self.file_rectangles), self.base_metadata) > 0:
-        #     raise ValueError("Face detection is not run or failed. Please run face detection first.")
+        if self.cache.check_file(self._local_file(self.file_rectangles), self.base_metadata) > 0:
+            raise ValueError("Face detection is not run or failed. Please run face detection first.")
         
         self._execute('video_detect_landmarks',
                       [self.file_input, self.file_rectangles, self.file_landmarks, self.config_landmarks],
@@ -114,8 +114,8 @@ class FaceProcessor3DI(FaceProcessor):
 
     def fit(self):
         # check if landmark detection was run and successful
-        # if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
-        #     raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
+        if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
+            raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
         
         # STEP 1: learn identity   
         self._execute('video_learn_identity',
@@ -151,8 +151,7 @@ class FaceProcessor3DI(FaceProcessor):
                     [self.file_expression_smooth, self.file_landmarks_canonicalized, self.model_morphable],
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
-        
-        # @TODO: We are only returning the file names that are used, not all the files that are generated. We may return all the files if needed.
+    
         if self.return_output == 'file':
             files = (
                 self._local_file(self.file_shape_coeff),
@@ -276,7 +275,6 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
         
-        # @TODO: We are only returning the file names that are used, not all the files that are generated. We may return all the files if needed.
         if self.return_output == 'file':
             files = (
                 self._local_file(self.file_expression_smooth),
