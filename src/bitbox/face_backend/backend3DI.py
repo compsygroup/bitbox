@@ -20,6 +20,7 @@ class FaceProcessor3DI(FaceProcessor):
         self.model_basis = basis_model
         self.fast = fast
         
+        self.execDIR = None
         self.docker_execDIR = '/app/3DI'
         
         # specific file extension for 3DI
@@ -151,8 +152,21 @@ class FaceProcessor3DI(FaceProcessor):
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
         
+        # @TODO: We are only returning the file names that are used, not all the files that are generated. We may return all the files if needed.
         if self.return_output == 'file':
-            return self._local_file(self.file_expression_smooth), self._local_file(self.file_pose_smooth), self._local_file(self.file_landmarks_canonicalized)
+            files = (
+                self._local_file(self.file_shape_coeff),
+                self._local_file(self.file_texture_coeff),
+                self._local_file(self.file_shape),
+                self._local_file(self.file_texture),
+                self._local_file(self.file_expression),
+                self._local_file(self.file_pose),
+                self._local_file(self.file_illumination),
+                self._local_file(self.file_expression_smooth),
+                self._local_file(self.file_pose_smooth),
+                self._local_file(self.file_landmarks_canonicalized)
+            )
+            return files
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             out_pose = read_pose(self._local_file(self.file_pose_smooth))
@@ -245,19 +259,15 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         self.execDIR = self.liteDIR
         self.docker_execDIR = '/app/3DI_lite'
         
-        # STEP 1-3: learn identity, shape and texture model, pose and expression
+        # STEP 1-4: learn identity, shape and texture model, pose and expression
         self._execute('process_video.py',
-                    [self.file_input, self.file_landmarks, self.file_expression, self.file_shape_coeff, self.file_texture_coeff, self.file_illumination, self.file_pose],
+                    [self.file_input, self.file_landmarks, self.file_expression_smooth, self.file_shape_coeff, self.file_texture_coeff, self.file_illumination, self.file_pose_smooth],
                     "expression and pose estimation",
                     output_file_idx=[-5, -4, -3, -2, -1])
         
         # @TODO: remove this part when the 3DI code is updated so that we don't need to change the working directory
         self.execDIR = tmp
         self.docker_execDIR = '/app/3DI'
-        
-        # STEP 4: Smooth expression and pose
-        self.file_expression_smooth = self.file_expression
-        self.file_pose_smooth = self.file_pose
             
         # STEP 5: Canonicalized landmarks
         self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
@@ -265,8 +275,17 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
         
+        # @TODO: We are only returning the file names that are used, not all the files that are generated. We may return all the files if needed.
         if self.return_output == 'file':
-            return self._local_file(self.file_expression_smooth), self._local_file(self.file_pose_smooth), self._local_file(self.file_landmarks_canonicalized)
+            files = (
+                self._local_file(self.file_expression_smooth),
+                self._local_file(self.file_shape_coeff),
+                self._local_file(self.file_texture_coeff),
+                self._local_file(self.file_illumination),
+                self._local_file(self.file_pose_smooth),
+                self._local_file(self.file_landmarks_canonicalized)
+            )
+            return files
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             out_pose = read_pose_lite(self._local_file(self.file_pose_smooth))

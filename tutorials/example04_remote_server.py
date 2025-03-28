@@ -11,7 +11,7 @@ server = {
     "port": 1160
 }
 
-processor = FP(server=server, return_output=False)
+processor = FP(server=server, return_output=None)
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)

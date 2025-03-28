@@ -4,6 +4,8 @@ import inspect
 import requests
 import json
 import sys
+import zipfile
+import io
 
 from time import time
 
@@ -94,15 +96,37 @@ class FaceProcessor:
         response = requests.post(url, files=files, data=data)
 
         if response.status_code == 200:
-            try:
-                output = response.json()
-                if output:
-                    return output
-            except requests.JSONDecodeError:
-                print("Invalid JSON response")
+            content_type = response.headers.get('Content-Type', '')
+
+            # extract the ZIP file that is returned from the server
+            if 'application/zip' in content_type:
+                try: 
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                        # extract the file
+                        z.extractall(self.output_dir)
+                        
+                        # change the remote file names to the local file names
+                        for filename in os.listdir(self.output_dir):
+                            if "input_file" in filename:
+                                new_filename = filename.replace("input_file", self.file_input_base)
+                                os.rename(
+                                    os.path.join(self.output_dir, filename),
+                                    os.path.join(self.output_dir, new_filename)
+                                )
+                except zipfile.BadZipFile:
+                    raise ValueError("Invalid ZIP file received from the server.")
+                except OSError as e:
+                    raise ValueError(f"File renaming error: {e}")
+            else:
+                try:
+                    output = response.json()
+                    if output:
+                        return output
+                except requests.JSONDecodeError:
+                    print("Invalid JSON response")
         else:
             print(f"Request failed with status {response.status_code}: {response.text}")
-        
+
         return None
           
           
@@ -226,91 +250,94 @@ class FaceProcessor:
     
     
     def _execute(self, executable, parameters, name, output_file_idx=-1, system_call=True):
-        if self.API: # Running on a remote server
-            # we will prevent redundant calls to the server from the same caller method
-            # for example, fit() method makes multiple calls to _execute method, but we only need to call the server once
-            caller_frame = inspect.stack()[1]
-            caller_name = caller_frame.function
-
-            if caller_name not in self.API_callers:
-                # make the call to the server
-                data = {
-                    'session_id': self.API_session,
-                    'processor_class': self.__class__.__name__,
-                    'method': caller_name
-                }
-                response = self._communicate('execute', data=data)
-                print(response)
-                
-                # add the method name to the list of active calls so that we don't call the server again
-                self.API_callers.add(caller_name)
-
-                # set up a function to remove the caller from the active calls whent he caller method returns
-                def remove_caller(frame, event, arg):
-                    if event == "return":
-                        self.API_callers.remove(caller_name)
-                    return remove_caller
-
-                caller_frame.frame.f_trace = remove_caller
-                sys.settrace(lambda *args, **kwargs: None)
+        status = False
         
-        else: # Running locally
-            status = False
-            
-            # get the output file name
-            if not isinstance(output_file_idx, list):
-                output_file_idx = [output_file_idx]
+        # get the output file name
+        if not isinstance(output_file_idx, list):
+            output_file_idx = [output_file_idx]
+    
+        # check if the output file already exists, if not run the executable
+        file_exits = 0
+        for idx in output_file_idx:
+            tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=True)
+            file_exits = max(file_exits, tmp)
         
-            # check if the output file already exists, if not run the executable
-            file_exits = 0
-            for idx in output_file_idx:
-                tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=True)
-                file_exits = max(file_exits, tmp)
-            
-            # run the executable if needed
-            if file_exits > 0: # file does not exist, has different metadata, or it is older than the retention period
-                # if needed, change the name of the output file
-                # @TODO: when we change the file name, next time we run the code, we should be using the latest file generated, which is hard to track. We are rewriting for now.
-                # @TODO: for the same reason above, we need to remove the old metadata file otherwise "file_generated" will be >0 and fail the check
-                # @TODO: also we need to consider multiple output files
-                if file_exits == 2:
-                    # delete this loop after resolving above @TODO
-                    for idx in output_file_idx:
-                        self.cache.delete_old_file(self._local_file(parameters[idx]))
-                    #output_file = self.cache.get_new_file_name(output_file)  # uncomment after resolving above @TODO
-                    #parameters[output_file_idx] = output_file  # uncomment after resolving above @TODO
-                
-                # run the command
-                print("Running %s..." % name, end='', flush=True)
-                t0 = time()
-                cmd = self._run_command(executable, parameters, output_file_idx, system_call)
-                print(" (Took %.2f secs)" % (time()-t0))
-                
-                # check if the command was successful
-                file_generated = 0
+        # run the executable if needed
+        if file_exits > 0: # file does not exist, has different metadata, or it is older than the retention period
+            # if needed, change the name of the output file
+            # @TODO: when we change the file name, next time we run the code, we should be using the latest file generated, which is hard to track. We are rewriting for now.
+            # @TODO: for the same reason above, we need to remove the old metadata file otherwise "file_generated" will be >0 and fail the check
+            # @TODO: also we need to consider multiple output files
+            if file_exits == 2:
+                # delete this loop after resolving above @TODO
                 for idx in output_file_idx:
-                    tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=False, json_required=False, retention_period='5 minutes')
-                    file_generated = max(file_generated, tmp)
+                    self.cache.delete_old_file(self._local_file(parameters[idx]))
+                #output_file = self.cache.get_new_file_name(output_file)  # uncomment after resolving above @TODO
+                #parameters[output_file_idx] = output_file  # uncomment after resolving above @TODO
+            
+            # run the command
+            print("Running %s..." % name, end='', flush=True)
+            t0 = time()
+            if self.API: # Running on a remote server
+                cmd = 'API call'
                 
-                if file_generated == 0: # file is generated (0 means the file is found)
-                    # store metadata
-                    additional_metadata = {
-                        'cmd': cmd,
-                        'input': self._local_file(self.file_input),
-                        'output': self.output_dir
+                # we will prevent redundant calls to the server from the same caller method
+                # for example, fit() method makes multiple calls to _execute method, but we only need to call the server once
+                caller_frame = inspect.stack()[1]
+                caller_name = caller_frame.function
+
+                if caller_name not in self.API_callers:
+                    # make the call to the server
+                    data = {
+                        'session_id': self.API_session,
+                        'processor_class': self.__class__.__name__,
+                        'method': caller_name
                     }
-                    metadata = {**self.base_metadata, **additional_metadata}
-                    for idx in output_file_idx:                
-                        self.cache.store_metadata(self._local_file(parameters[idx]), metadata)
-                        
-                    status = True
-                else:
-                    status = False
-            else: # file is already present
+                    
+                    self._communicate('execute', data=data)
+                                    
+                    # add the method name to the list of active calls so that we don't call the server again
+                    self.API_callers.add(caller_name)
+
+                    # set up a function to remove the caller from the active calls whent he caller method returns
+                    def remove_caller(frame, event, arg):
+                        if event == "return":
+                            self.API_callers.remove(caller_name)
+                        return remove_caller
+
+                    caller_frame.frame.f_trace = remove_caller
+                    sys.settrace(lambda *args, **kwargs: None)
+            else: # Running locally
+                cmd = self._run_command(executable, parameters, output_file_idx, system_call)
+            print(" (Took %.2f secs)" % (time()-t0))
+            
+            # check if the command was successful
+            file_generated = 0
+            for idx in output_file_idx:
+                tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=False, json_required=False, retention_period='5 minutes')
+                # if tmp > 0:
+                #     print(f"{self._local_file(parameters[idx])} was not generated.")
+                file_generated = max(file_generated, tmp)
+            
+            if file_generated == 0: # file is generated (0 means the file is found)
+                # store metadata
+                additional_metadata = {
+                    'cmd': cmd,
+                    'input': self._local_file(self.file_input),
+                    'output': self.output_dir
+                }
+                metadata = {**self.base_metadata, **additional_metadata}
+                for idx in output_file_idx:                
+                    self.cache.store_metadata(self._local_file(parameters[idx]), metadata)
+                    
                 status = True
-                
-            if not status:
-                raise ValueError("Failed running %s" % name)
+            else:
+                status = False
+        else: # file is already present
+            status = True
+            
+        if not status:
+            raise ValueError("Failed running %s" % name)
                  
         
     def preprocess(self):
