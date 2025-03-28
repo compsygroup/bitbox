@@ -12,7 +12,8 @@ from time import time
 from ..utilities import FileCache, generate_file_hash
 
 class FaceProcessor:
-    def __init__(self, return_output='dict', server=None):
+    def __init__(self, return_output='dict', server=None, verbose=True):
+        self.verbose = verbose
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
@@ -108,11 +109,21 @@ class FaceProcessor:
                         # change the remote file names to the local file names
                         for filename in os.listdir(self.output_dir):
                             if "input_file" in filename:
-                                new_filename = filename.replace("input_file", self.file_input_base)
+                                # rename the file
+                                new_filename = os.path.join(self.output_dir, filename.replace("input_file", self.file_input_base))
                                 os.rename(
                                     os.path.join(self.output_dir, filename),
-                                    os.path.join(self.output_dir, new_filename)
+                                    new_filename
                                 )
+                                # we will create their JSON files here to prevent multiple calls to the server
+                                additional_metadata = {
+                                    'cmd': 'API call',
+                                    'input': self._local_file(self.file_input),
+                                    'output': self.output_dir
+                                }
+                                metadata = {**self.base_metadata, **additional_metadata}              
+                                self.cache.store_metadata(self._local_file(new_filename), metadata)
+                
                 except zipfile.BadZipFile:
                     raise ValueError("Invalid ZIP file received from the server.")
                 except OSError as e:
@@ -250,6 +261,25 @@ class FaceProcessor:
     
     
     def _execute(self, executable, parameters, name, output_file_idx=-1, system_call=True):
+        # we will prevent redundant calls to the server from the same caller method
+        # for example, fit() method makes multiple calls to _execute method, but we only need to call the server once
+        caller_frame = inspect.stack()[1]
+        caller_name = caller_frame.function
+        if self.API and (caller_name in self.API_callers):
+            verbose = False
+        else:
+            verbose = True
+            # add the method name to the list of active calls so that we don't call the server again
+            self.API_callers.add(caller_name)
+
+            # set up a function to remove the caller from the active calls whent he caller method returns
+            def remove_caller(frame, event, arg):
+                if event == "return":
+                    self.API_callers.remove(caller_name)
+                return remove_caller
+            caller_frame.frame.f_trace = remove_caller
+            sys.settrace(lambda *args, **kwargs: None)
+                
         status = False
         
         # get the output file name
@@ -259,7 +289,7 @@ class FaceProcessor:
         # check if the output file already exists, if not run the executable
         file_exits = 0
         for idx in output_file_idx:
-            tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=True)
+            tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=verbose)
             file_exits = max(file_exits, tmp)
         
         # run the executable if needed
@@ -275,41 +305,28 @@ class FaceProcessor:
                 #output_file = self.cache.get_new_file_name(output_file)  # uncomment after resolving above @TODO
                 #parameters[output_file_idx] = output_file  # uncomment after resolving above @TODO
             
+            if self.verbose:
+                print("Running %s..." % name, end='', flush=True)
+                t0 = time()
+            
             # run the command
-            print("Running %s..." % name, end='', flush=True)
-            t0 = time()
+            # @TODO: with fit method, the first call to _execute brings all the files but not JSONs
+            # @TODO: thus, all other calls also made (JSON not found) and bring the files again
+            # @TODO: to prevent multiple calls, generate JSONs for all files in the first call
             if self.API: # Running on a remote server
                 cmd = 'API call'
-                
-                # we will prevent redundant calls to the server from the same caller method
-                # for example, fit() method makes multiple calls to _execute method, but we only need to call the server once
-                caller_frame = inspect.stack()[1]
-                caller_name = caller_frame.function
-
-                if caller_name not in self.API_callers:
-                    # make the call to the server
-                    data = {
-                        'session_id': self.API_session,
-                        'processor_class': self.__class__.__name__,
-                        'method': caller_name
-                    }
-                    
-                    self._communicate('execute', data=data)
-                                    
-                    # add the method name to the list of active calls so that we don't call the server again
-                    self.API_callers.add(caller_name)
-
-                    # set up a function to remove the caller from the active calls whent he caller method returns
-                    def remove_caller(frame, event, arg):
-                        if event == "return":
-                            self.API_callers.remove(caller_name)
-                        return remove_caller
-
-                    caller_frame.frame.f_trace = remove_caller
-                    sys.settrace(lambda *args, **kwargs: None)
+                # make the call to the server
+                data = {
+                    'session_id': self.API_session,
+                    'processor_class': self.__class__.__name__,
+                    'method': caller_name
+                }
+                self._communicate('execute', data=data)
             else: # Running locally
                 cmd = self._run_command(executable, parameters, output_file_idx, system_call)
-            print(" (Took %.2f secs)" % (time()-t0))
+            
+            if self.verbose:
+                print(" (Took %.2f secs)" % (time()-t0))
             
             # check if the command was successful
             file_generated = 0

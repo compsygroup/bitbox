@@ -10,9 +10,9 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
         # Run the parent class init
-        super().__init__(return_output=return_output, server=server)
+        super().__init__(return_output=return_output, server=server, verbose=verbose)
         
         self.model_camera = camera_model
         self.model_morphable = morphable_model
@@ -206,7 +206,7 @@ class FaceProcessor3DI(FaceProcessor):
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=False):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
         # Run the parent class init
         super().__init__(camera_model=camera_model,
                          landmark_model=landmark_model,
@@ -214,7 +214,8 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                          basis_model=basis_model,
                          fast=fast,
                          return_output=return_output,
-                         server=server)
+                         server=server,
+                         verbose=verbose)
         
         self.docker_execDIR = '/app/3DI'
         
@@ -298,6 +299,8 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
     
 class FaceProcessor3DITest(FaceProcessor3DI):
     def __init__(self):
+        self.verbose = True
+        self.server = None
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
