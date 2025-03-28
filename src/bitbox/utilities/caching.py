@@ -1,9 +1,20 @@
 import os
 import json
 import glob
+import hashlib
 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+
+
+def generate_file_hash(file_path):
+    hasher = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            hasher.update(chunk)
+    
+    return hasher.hexdigest()
+
 
 def parse_retention_period(period_str):
     parts = period_str.split()
@@ -41,7 +52,7 @@ class FileCache:
         # check if the file exists
         if os.path.exists(file_path): # file exists
             # check if the associated JSON file exists
-            json_file = '.'.join(file_path.split('.')[:-1]) + '.json'
+            json_file = file_path + '.json' #'.'.join(file_path.split('.')[:-1]) + '.json'
             if os.path.exists(json_file): # JSON exits
                 with open(json_file, "r") as json_file:
                     old_metadata = json.load(json_file)
@@ -107,11 +118,11 @@ class FileCache:
         additonial_metadata = {'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         metadata = {**base_metadata, **additonial_metadata}
         
-        json_path = '.'.join(file_path.split('.')[:-1]) + '.json'
-        with open(json_path, "w") as f:
+        json_file = file_path + '.json' #'.'.join(file_path.split('.')[:-1]) + '.json'
+        with open(json_file, "w") as f:
             json.dump(metadata, f, indent=4)
             
-        if not os.path.exists(json_path):
+        if not os.path.exists(json_file):
             raise ValueError("Metadata file for %s could not be created." % file_path)
     
     
@@ -132,7 +143,7 @@ class FileCache:
     
     
     def delete_old_metadata(self, file_path):
-        json_file = '.'.join(file_path.split('.')[:-1]) + '.json'
+        json_file = file_path + '.json' #'.'.join(file_path.split('.')[:-1]) + '.json'
         if os.path.exists(json_file):
             os.remove(json_file)
             
