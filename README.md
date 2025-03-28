@@ -18,10 +18,10 @@ Using Docker is usually very straightforward; however, 3DI requires downloading 
 3. Place the Dockerfile and the face model you downloaded (`01_MorphableModel.mat`) in the same directory
 4. Within this directory, run the following command build the image
     ```bash
-    docker build -t 3di:0.3.0-basel2009 . 
+    docker build -t bitbox:latest . 
     ```
-    The first parameter `3di:0.3.0-basel2009` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
-5. That's it! You will also need to set an environment variable `DOCKER_3DI`, which will be explained below.
+    The first parameter `bitbox:latest` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
+5. That's it! You will also need to set an environment variable `DOCKER_BITBOX`, which will be explained below.
 
 ### Installing Face Backends Natively
 **The recommended way to install backends is to use our Docker images** as explained above. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
@@ -76,21 +76,21 @@ To install Bitbox, follow these steps. **You will need to use python 3.8 or high
       export PATH_3DI=/path/to/3DI/directory
       ```
 
-7. If you are using Docker, set the environment variable `DOCKER_3DI` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
+7. If you are using Docker, set the environment variable `DOCKER_BITBOX` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
 
     - **Linux**:
       ```bash
-      export DOCKER_3DI=3di:0.3.0-basel2009
+      export DOCKER_BITBOX=bitbox:latest
       ```
 
     - **Windows** (Command Prompt):
       ```bash
-      set DOCKER_3DI=3di:0.3.0-basel2009
+      set DOCKER_BITBOX=bitbox:latest
       ```
 
     - **Mac**:
       ```bash
-      export DOCKER_3DI=3di:0.3.0-basel2009
+      export DOCKER_BITBOX=bitbox:latest
       ```
 
 Now you are ready to use Bitbox!
@@ -103,7 +103,7 @@ Once you are done with installation, you can use Bitbox by
     ```bash
     source env/bin/activate
     ```
-2. Set the environment variable `PATH_3DI` or `DOCKER_3DI` if you have not set them already in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
+2. Set the environment variable `PATH_3DI` or `DOCKER_BITBOX` if you have not set them already in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
 
 3. Import the library in your Python code:
  ```python
@@ -113,16 +113,13 @@ from bitbox.face_backend import FaceProcessor3DI
 ### Example Usage
 
  ```python
-from bitbox.face_backend import FaceProcessor3DI
-import os
+from bitbox.face_backend import FaceProcessor3DI as FP
 
-# Please make sure you give the correct full (not relative) path
-DIR = '/path/to/data'
-input_file = os.path.join(DIR, 'video.mp4') 
-output_dir = os.path.join(DIR, 'output')
+input_file = 'data/elaine.mp4'
+output_dir = 'output'
 
 # define a face processor
-processor = FaceProcessor3DI()
+processor = FP()
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
