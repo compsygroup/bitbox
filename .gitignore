@@ -8,6 +8,9 @@
 *Birkan*
 output/
 output/*
+ML*.mp4
+SC*.mp4
+IS*.mp4
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
