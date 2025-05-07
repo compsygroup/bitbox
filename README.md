@@ -13,7 +13,7 @@ The current version of Bitbox supports two face backends, namely 3DI and 3DI-lit
 ### Installing Face Backends Using Docker (Recommended)
 Using Docker is usually very straightforward; however, 3DI requires downloading an external face model (you need to register individually and request access) and updating our image with this model.
 
-1. Download the Dockerfile. We have two options for [CUDA 11.4.3](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda11.4_cv4.5/Dockerfile) or [CUDA 12.2.2](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda12.2_cv4.8/Dockerfile). Select the one that is most compatible with your NVIDIA GPU.
+1. Download the Dockerfile. We have two options for [CUDA 11.8.0](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda11.8_cv4.5/Dockerfile) or [CUDA 12.2.2](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda12.2_cv4.8/Dockerfile). Select the one that is most compatible with your NVIDIA GPU.
 2. Register and download the [face model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2&id=downloads). Unfortunately this may take some time. We cannot help with this step.
 3. Place the Dockerfile and the face model you downloaded (`01_MorphableModel.mat`) in the same directory
 4. Within this directory, run the following command build the image
@@ -23,7 +23,7 @@ Using Docker is usually very straightforward; however, 3DI requires downloading 
     The first parameter `bitbox:latest` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
 5. That's it! You will also need to set an environment variable `DOCKER_BITBOX`, which will be explained below.
 
-### Installing Face Backends Natively
+### Installing Face Backends Natively (Not Recommended)
 **The recommended way to install backends is to use our Docker images** as explained above. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
 
 Similarly, 3DI-lite can be installed from ... (COMING SOON)
