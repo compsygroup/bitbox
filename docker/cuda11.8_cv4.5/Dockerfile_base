@@ -1,0 +1,182 @@
+# Base image with CUDA 12.0 support
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+
+# Set environment variables for non-interactive installs
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --fix-broken\
+    python3 python3-pip python3-dev python-is-python3 \
+    cmake build-essential git wget \
+    libjpeg-dev libpng-dev libtiff-dev libwebp-dev libopenexr-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
+    libxvidcore-dev libx264-dev libxine2-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    libatlas-base-dev liblapacke-dev gfortran libhdf5-dev \
+    libprotobuf-dev protobuf-compiler libgoogle-glog-dev \
+    libgflags-dev libeigen3-dev libceres-dev libboost-all-dev \
+    libopenblas-dev liblapack-dev liblapacke-dev libopenblas-dev \
+    cmake libtbb2 g++ unzip ffmpeg libgtk2.0-dev libavutil-dev libtbb-dev \
+    libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev freeglut3-dev libgtkglext1-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+# opencv-python==4.5.5.64
+RUN pip3 install --no-cache-dir \
+    scikit-learn==1.3.2 \
+    matplotlib==3.7.5 \
+    scipy==1.10.1 \
+    numpy==1.24.4 \
+    kornia==0.7.3 \
+    scikit-image==0.21.0 \
+    pandas==2.0.3 \
+    ninja==1.11.1.3 \
+    certifi==2024.7.4 \
+    charset-normalizer==3.3.2 \
+    clarabel==0.7.1 \
+    cvxpy==1.4.2 \
+    ecos==2.0.13 \
+    fonttools==4.50.0 \
+    fsspec==2025.2.0 \
+    idna==3.7 \
+    importlib-resources==6.4.0 \
+    jinja2==3.1.4 \
+    joblib==1.3.2 \
+    kiwisolver==1.4.5 \
+    nvidia-nccl-cu12==2.18.1 \
+    nvidia-nvjitlink-cu12==12.8.61 \
+    osqp==0.6.5 \
+    packaging==24.0 \
+    pillow==10.3.0 \
+    pyparsing==3.1.2 \
+    pytz==2024.1 \
+    qdldl==0.1.7.post0 \
+    scs==3.2.4.post1 \
+    six==1.16.0 \
+    threadpoolctl==3.4.0 \
+    torch==2.1.0 \
+    torchvision==0.16.0 \
+    triton==2.1.0 \
+    tzdata==2024.1 \
+    urllib3==2.2.2 \
+    zipp==3.18.1
+
+# Disable certificate verification for git
+RUN git config --global http.sslVerify false
+
+# Compile OpenCV with CUDA support
+WORKDIR /opencv
+RUN git clone --branch 4.5.5 --depth 1 https://github.com/opencv/opencv.git && \
+    git clone --branch 4.5.5 --depth 1 https://github.com/opencv/opencv_contrib.git && \
+    mkdir build && \
+    cd build && \
+    cmake -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -DBUILD_JPEG=ON \
+          -DBUILD_WEBP=ON \
+          -DBUILD_PNG=ON \
+          -DBUILD_TIFF=ON \
+          -DWITH_FFMPEG=ON \
+          -DOPENCV_EXTRA_MODULES_PATH=../opencv_contrib/modules \
+          -D WITH_TBB=ON \
+          -D ENABLE_FAST_MATH=1 \
+          -D CUDA_FAST_MATH=1 \
+          -D WITH_CUBLAS=1  \
+          -D WITH_CUDA=ON \
+          -D BUILD_opencv_cudacodec=OFF \
+          -D WITH_CUDNN=ON \
+          -D OPENCV_DNN_CUDA=ON \
+          -D WITH_V4L=ON \
+          -D WITH_QT=OFF \
+          -D WITH_FFMPEG=ON \
+          -D WITH_OPENGL=ON \
+          -D WITH_GSTREAMER=ON \
+          -D WITH_GSTREAMER_1_0=ON \
+          -D OPENCV_GENERATE_PKGCONFIG=ON \
+          -D OPENCV_PC_FILE_NAME=opencv.pc \
+          -D OPENCV_ENABLE_NONFREE=ON \
+          -D INSTALL_PYTHON_EXAMPLES=OFF \
+          -D INSTALL_C_EXAMPLES=OFF \
+          -D BUILD_EXAMPLES=OFF \
+          -D CMAKE_CXX_STANDARD=14 \
+          -D PYTHON_EXECUTABLE=$(which python3) \
+          -D OPENCV_PYTHON3_INSTALL_PATH=/usr/local/lib/python3.8/dist-packages \
+          ../opencv && \
+    make -j$(nproc) && make install && ldconfig 
+
+###############################
+# 3DI
+###############################
+
+# Copy and compile the 3DI app
+WORKDIR /app
+RUN rm -rf /opencv
+RUN git clone https://github.com/compsygroup/3DI.git .
+RUN cd /app/build && chmod +x builder.sh && ./builder.sh
+RUN cd /app/build/scripts && chmod +x compute_local_exp_coefficients.py learn_localised_bases.py produce_canonicalized_3Dlandmarks.py
+RUN cd /app/build/scripts && chmod +x save_identity_and_shape.py total_variance_rec_pose.py total_variance_rec.py
+RUN cd /app/build && chmod +x process_video.py multiframe_from_images.py
+
+###############################
+# 3DI-LITE
+###############################
+
+# install nvdiffrast
+WORKDIR /app/3DI_lite_tmp
+RUN git clone https://github.com/NVlabs/nvdiffrast
+WORKDIR  /app/3DI_lite_tmp/nvdiffrast
+RUN python3 setup.py install
+
+# install 3DI-lite
+WORKDIR /app/3DI_lite_tmp
+RUN git clone https://github.com/sariyanidi/3DMMD
+
+# move everthing to its proper place
+WORKDIR /
+RUN mv /app/3DI_lite_tmp/3DMMD /app/3DI_lite
+RUN mv /app/build /app/3DI
+RUN rm -rf /app/3DI_lite_tmp
+RUN rm -rf /app/src
+
+WORKDIR /app/3DI_lite
+RUN chmod +x process_video.py
+
+###############################
+# Model files
+###############################
+
+WORKDIR /app/3DI/models
+RUN tar -xvzf lmodels.tar.gz
+WORKDIR /app/3DI/models/raw
+RUN wget --no-check-certificate https://raw.githubusercontent.com/Juyong/3DFace/master/Exp_Pca.bin
+RUN cp /app/3DI/models/raw/Exp_Pca.bin /app/3DI_lite/data/raw/.
+
+# install insightface
+WORKDIR /tmp
+RUN git clone https://github.com/deepinsight/insightface.git
+RUN cp -r /tmp/insightface/recognition/arcface_torch /app/3DI_lite/models/.
+
+# copy trained models
+RUN mkdir /app/3DI_lite/checkpoints
+RUN mkdir /app/3DI_lite/models/checkpoints
+
+WORKDIR /app/3DI_lite
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/backbone.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/medium_model15.00combined_celeb_ytfacesresnet50139979True1e-05-2-BFMmm-23660UNL_STORED.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/sep_modelv3SP15.00combined_celeb_ytfacesresnet501e-052True139979_V2.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/resnet50-0676ba61.pth -P ./models/checkpoints/
+
+# suppress lowest subnormal warnings
+RUN sed -i -e '8i import warnings' -e '8i warnings.filterwarnings("ignore", ".*smallest subnormal.*", category=UserWarning, module="numpy.core.getlimits")' process_video.py
+
+###############################
+# Final setup
+###############################
+
+# Add entrypoint script to handle first-time setup
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set the default command to the entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
+
+WORKDIR /app

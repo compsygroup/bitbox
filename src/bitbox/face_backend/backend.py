@@ -222,10 +222,13 @@ class FaceProcessor:
             # executable
             # @TODO: use the minimally utilized GPU
             if self.docker:
-                cmd = f"docker run --rm --gpus devices={gpu_id} \
-                    -v {self.input_dir}:{self.docker_input_dir} \
-                    -v {self.output_dir}:{self.docker_output_dir} \
+                cmd = f"\
+                    docker run --rm --gpus device={gpu_id}\
+                    -v {self.input_dir}:{self.docker_input_dir}\
+                    -v {self.output_dir}:{self.docker_output_dir}\
                     -w {self.docker_execDIR} {self.docker} ./{executable}"
+                # collapse all runs of whitespace into single spaces (due to use of \ in the command)
+                cmd = " ".join(cmd.split())
             else:
                 cmd = os.path.join(self.execDIR, executable)
             

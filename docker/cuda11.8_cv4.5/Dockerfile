@@ -1,5 +1,5 @@
 # Base image including 3DI but not the face model file
-FROM compsygroup/bitbox:20250507-cuda12.2.2-cudnn8-opencv4.8.1-ubuntu20.04
+FROM compsygroup/bitbox:20250507-cuda11.8.0-cudnn8-opencv4.5.5-ubuntu20.04
 
 # Add the model file 
 COPY 01_MorphableModel.mat /app/3DI/models/raw/

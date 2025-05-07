@@ -11,6 +11,8 @@ output/*
 ML*.mp4
 SC*.mp4
 IS*.mp4
+tutorials/test*
+01_MorphableModel.mat
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
