@@ -9,7 +9,7 @@ import io
 
 from time import time
 
-from ..utilities import FileCache, generate_file_hash
+from ..utilities import FileCache, generate_file_hash, select_gpu
 
 class FaceProcessor:
     def __init__(self, return_output='dict', server=None, verbose=True):
@@ -213,14 +213,22 @@ class FaceProcessor:
         return None
            
     
-    def _run_command(self, executable, parameters, output_file_idx, system_call):                  
+    def _run_command(self, executable, parameters, output_file_idx, system_call):
+        # use a specific GPU with the least memory used
+        gpu_id = select_gpu()
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+                    
         if system_call: # if we are using system call          
             # executable
+            # @TODO: use the minimally utilized GPU
             if self.docker:
-                cmd = f"docker run --rm --gpus all \
-                    -v {self.input_dir}:{self.docker_input_dir} \
-                    -v {self.output_dir}:{self.docker_output_dir} \
+                cmd = f"\
+                    docker run --rm --gpus device={gpu_id}\
+                    -v {self.input_dir}:{self.docker_input_dir}\
+                    -v {self.output_dir}:{self.docker_output_dir}\
                     -w {self.docker_execDIR} {self.docker} ./{executable}"
+                # collapse all runs of whitespace into single spaces (due to use of \ in the command)
+                cmd = " ".join(cmd.split())
             else:
                 cmd = os.path.join(self.execDIR, executable)
             
@@ -243,6 +251,7 @@ class FaceProcessor:
                 os.chdir(self.execDIR)
             
             # run the command
+            cmd = f"CUDA_VISIBLE_DEVICES={gpu_id} {cmd}"
             os.system(cmd)
             
             # @TODO: remove this part when the 3DI code is updated so that we don't need to change the working directory
