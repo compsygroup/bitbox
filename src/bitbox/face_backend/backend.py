@@ -72,12 +72,16 @@ class FaceProcessor:
             # check if we are running on a docker container
             docker_image = os.environ.get('DOCKER_BITBOX')
             if docker_image:
-                result = os.system(f"docker images -q {docker_image} > /dev/null 2>&1")
-                if result != 0:
-                    warnings.warn(f"The environment variable DOCKER_BITBOX is set to {docker_image}, but the image is not found.")
-                else:
-                    print(f"Using backend inside a Docker container: {docker_image}")
+                if docker_image.endswith("sandbox") or docker_image.endswith(".sif"):
+                    print(f"Using backend inside a Singularity container: {docker_image}")
                     self.docker = docker_image
+                else:
+                    result = os.system(f"docker images -q {docker_image} > /dev/null 2>&1")
+                    if result != 0:
+                        warnings.warn(f"The environment variable DOCKER_BITBOX is set to {docker_image}, but the image is not found.")
+                    else:
+                        print(f"Using backend inside a Docker container: {docker_image}")
+                        self.docker = docker_image
     
     
     def _local_file(self, file_path):
@@ -222,11 +226,19 @@ class FaceProcessor:
             # executable
             # @TODO: use the minimally utilized GPU
             if self.docker:
-                cmd = f"\
-                    docker run --rm --gpus device={gpu_id}\
-                    -v {self.input_dir}:{self.docker_input_dir}\
-                    -v {self.output_dir}:{self.docker_output_dir}\
-                    -w {self.docker_execDIR} {self.docker} ./{executable}"
+                if self.docker.endswith("sandbox") or self.docker.endswith(".sif"):
+                    cmd = f"singularity exec --nv \
+                        --bind {self.input_dir}:{self.docker_input_dir} \
+                        --bind {self.output_dir}:{self.docker_output_dir} \
+                        {self.docker} \
+                        bash -c \"cd {self.docker_execDIR} && ./{executable}"
+                else:
+                    cmd = f"\
+                        docker run --rm --gpus device={gpu_id}\
+                        -v {self.input_dir}:{self.docker_input_dir}\
+                        -v {self.output_dir}:{self.docker_output_dir}\
+                        -w {self.docker_execDIR} {self.docker} ./{executable}"
+                        
                 # collapse all runs of whitespace into single spaces (due to use of \ in the command)
                 cmd = " ".join(cmd.split())
             else:
@@ -236,8 +248,14 @@ class FaceProcessor:
             for p in parameters:
                 if p is None:
                     raise ValueError("File names are not set correctly. Please use io() method prior to running any processing.")
-                cmd += ' ' + str(p)
-            
+                if self.docker and (self.docker.endswith("sandbox") or self.docker.endswith(".sif")):
+                    cmd += f" {str(p)}"
+                else:
+                    cmd += ' ' + str(p)
+                    
+            if self.docker and (self.docker.endswith("sandbox") or self.docker.endswith(".sif")):
+                cmd += "\""   # Close the double quotes for bash -c
+                
             # suppress the output of the command. check whether we are on a Windows or Unix-like system
             if os.name == 'nt': # Windows
                 cmd += ' > NUL'
