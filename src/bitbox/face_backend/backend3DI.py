@@ -10,13 +10,14 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, backend=None, verbose=True):
         # Run the parent class init
-        super().__init__(return_output=return_output, server=server, verbose=verbose)
+        super().__init__(return_output=return_output, server=server, backend=backend, verbose=verbose)
         
         self.model_camera = camera_model
         self.model_morphable = morphable_model
         self.model_landmark = landmark_model
+
         self.model_basis = basis_model
         self.fast = fast
         
@@ -28,6 +29,8 @@ class FaceProcessor3DI(FaceProcessor):
         
         # if we are not using the docker container, we need to find out where the 3DI package is installed
         if self.docker is None:
+            if self.backend:
+                os.environ['BITBOX_3DI'] = self.backend
             if os.environ.get('BITBOX_3DI'):
                 execDIRs = [os.environ.get('BITBOX_3DI')]
             else:
@@ -205,7 +208,7 @@ class FaceProcessor3DI(FaceProcessor):
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, backend=None, verbose=True):
         # Run the parent class init
         super().__init__(camera_model=camera_model,
                          landmark_model=landmark_model,
@@ -214,6 +217,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                          fast=fast,
                          return_output=return_output,
                          server=server,
+                         backend=backend,    
                          verbose=verbose)
         
         self.docker_execDIR = '/app/3DI'
@@ -225,6 +229,8 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         
         # if we are not using the docker container, we need to find out where the 3DI-lite package is installed
         if self.docker is None:
+            if self.backend:
+                os.environ['BITBOX_3DI_LITE'] = self.backend
             if os.environ.get('BITBOX_3DI_LITE'):
                 execDIRs = [os.environ.get('BITBOX_3DI_LITE')]
             else:

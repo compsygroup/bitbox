@@ -6,3 +6,4 @@ python-dateutil
 PyWavelets
 matplotlib
 pandas
+requests

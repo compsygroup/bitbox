@@ -12,8 +12,9 @@ from time import time
 from ..utilities import FileCache, generate_file_hash, select_gpu
 
 class FaceProcessor:
-    def __init__(self, return_output='dict', server=None, verbose=True):
+    def __init__(self, return_output='dict', server=None, backend=None, verbose=True):
         self.verbose = verbose
+        self.backend = backend # new parameter to override backend settings (e.g., '3DI', '3DIlite', etc.)
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
@@ -69,8 +70,8 @@ class FaceProcessor:
                 raise ValueError(f"Server is down or unreachable.")
             
         else: # Commands will be run locally
-            # check if we are running on a docker container
-            docker_image = os.environ.get('BITBOX_DOCKER')
+            # get docker image from parameter backend (if provided) or from BITBOX_DOCKER env variable
+            docker_image = self.backend or os.environ.get('BITBOX_DOCKER')
             if docker_image:
                 if docker_image.endswith("sandbox") or docker_image.endswith(".sif"):
                     print(f"Using backend inside a Singularity container: {docker_image}")
