@@ -28,10 +28,10 @@ class FaceProcessor3DI(FaceProcessor):
         
         # if we are not using the docker container, we need to find out where the 3DI package is installed
         if self.docker is None:
-            if os.environ.get('PATH_3DI'):
-                execDIRs = [os.environ.get('PATH_3DI')]
+            if os.environ.get('BITBOX_3DI'):
+                execDIRs = [os.environ.get('BITBOX_3DI')]
             else:
-                warnings.warn("PATH_3DI environment variable is not set. Using default system PATH.")
+                warnings.warn("BITBOX_3DI environment variable is not set. Using default system PATH.")
                 execDIRs = os.environ.get('PATH')
                 if ';' in execDIRs:  # Windows
                     execDIRs = execDIRs.split(';')
@@ -44,7 +44,7 @@ class FaceProcessor3DI(FaceProcessor):
                     break
                 
             if self.execDIR is None:
-                raise ValueError("3DI package is not found. Please make sure you defined PATH_3DI system variable or use our Docker image.")
+                raise ValueError("3DI package is not found. Please make sure you defined BITBOX_3DI system variable or use our Docker image.")
         
         # prepare configuration files
         if self.fast:
@@ -225,10 +225,10 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         
         # if we are not using the docker container, we need to find out where the 3DI-lite package is installed
         if self.docker is None:
-            if os.environ.get('PATH_3DI_LITE'):
-                execDIRs = [os.environ.get('PATH_3DI_LITE')]
+            if os.environ.get('BITBOX_3DI_LITE'):
+                execDIRs = [os.environ.get('BITBOX_3DI_LITE')]
             else:
-                warnings.warn("PATH_3DI_LITE environment variable is not set. Using default system PATH.")
+                warnings.warn("BITBOX_3DI_LITE environment variable is not set. Using default system PATH.")
                 execDIRs = os.environ.get('PATH')
                 if ';' in execDIRs:  # Windows
                     execDIRs = execDIRs.split(';')
@@ -241,7 +241,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                     break
                 
             if self.liteDIR is None:
-                raise ValueError("3DI-lite package is not found. Please make sure you defined PATH_3DI_LITE system variable or use our Docker image.")
+                raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI-lite'

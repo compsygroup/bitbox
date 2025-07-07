@@ -70,7 +70,7 @@ class FaceProcessor:
             
         else: # Commands will be run locally
             # check if we are running on a docker container
-            docker_image = os.environ.get('DOCKER_BITBOX')
+            docker_image = os.environ.get('BITBOX_DOCKER')
             if docker_image:
                 if docker_image.endswith("sandbox") or docker_image.endswith(".sif"):
                     print(f"Using backend inside a Singularity container: {docker_image}")
@@ -78,7 +78,7 @@ class FaceProcessor:
                 else:
                     result = os.system(f"docker images -q {docker_image} > /dev/null 2>&1")
                     if result != 0:
-                        warnings.warn(f"The environment variable DOCKER_BITBOX is set to {docker_image}, but the image is not found.")
+                        warnings.warn(f"The environment variable BITBOX_DOCKER is set to {docker_image}, but the image is not found.")
                     else:
                         print(f"Using backend inside a Docker container: {docker_image}")
                         self.docker = docker_image

@@ -21,7 +21,7 @@ Using Docker is usually very straightforward; however, 3DI requires downloading 
     docker build -t bitbox:latest . 
     ```
     The first parameter `bitbox:latest` is the name of the image to be created. You can change it if you wish. Please don't forget the `.` at the end. 
-5. That's it! You will also need to set an environment variable `DOCKER_BITBOX`, which will be explained below.
+5. That's it! You will also need to set an environment variable `BITBOX_DOCKER`, which will be explained below.
 
 ### Installing Face Backends Natively (Not Recommended)
 **The recommended way to install backends is to use our Docker images** as explained above. If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
@@ -59,38 +59,38 @@ To install Bitbox, follow these steps. **You will need to use python 3.8 or high
     python setup.py install
     ```
 
-6. If you are not using Docker, set the environment variable `PATH_3DI` to indicate the directory in which 3DI was installed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
+6. If you are not using Docker, set the environment variable `BITBOX_3DI` to indicate the directory in which 3DI was installed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
 
     - **Linux**:
       ```bash
-      export PATH_3DI=/path/to/3DI/directory
+      export BITBOX_3DI=/path/to/3DI/directory
       ```
 
     - **Windows** (Command Prompt):
       ```bash
-      set PATH_3DI=C:\path\to\3DI\directory
+      set BITBOX_3DI=C:\path\to\3DI\directory
       ```
 
     - **Mac**:
       ```bash
-      export PATH_3DI=/path/to/3DI/directory
+      export BITBOX_3DI=/path/to/3DI/directory
       ```
 
-7. If you are using Docker, set the environment variable `DOCKER_BITBOX` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
+7. If you are using Docker, set the environment variable `BITBOX_DOCKER` to indicate the 3DI image name/tag. Change the image name/tag if needed. We recommend setting it in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows).
 
     - **Linux**:
       ```bash
-      export DOCKER_BITBOX=bitbox:latest
+      export BITBOX_DOCKER=bitbox:latest
       ```
 
     - **Windows** (Command Prompt):
       ```bash
-      set DOCKER_BITBOX=bitbox:latest
+      set BITBOX_DOCKER=bitbox:latest
       ```
 
     - **Mac**:
       ```bash
-      export DOCKER_BITBOX=bitbox:latest
+      export BITBOX_DOCKER=bitbox:latest
       ```
 
 Now you are ready to use Bitbox!
@@ -103,7 +103,7 @@ Once you are done with installation, you can use Bitbox by
     ```bash
     source env/bin/activate
     ```
-2. Set the environment variable `PATH_3DI` or `DOCKER_BITBOX` if you have not set them already in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
+2. Set the environment variable `BITBOX_3DI` or `DOCKER_BITBOX` if you have not set them already in .bahsrc (on Linux/Mac) or in System's Environment Variables (on Windows). If you did that you can skip this step.
 
 3. Import the library in your Python code:
  ```python
