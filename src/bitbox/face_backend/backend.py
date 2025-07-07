@@ -227,7 +227,7 @@ class FaceProcessor:
             # @TODO: use the minimally utilized GPU
             if self.docker:
                 if self.docker.endswith("sandbox") or self.docker.endswith(".sif"):
-                    cmd = f"singularity exec --nv \
+                    cmd = f"singularity exec --nv --writable \
                         --bind {self.input_dir}:{self.docker_input_dir} \
                         --bind {self.output_dir}:{self.docker_output_dir} \
                         {self.docker} \
