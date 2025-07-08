@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bitbox"
-version = "2024.12dev"
+version = "2025.07dev"
 authors = [
   { name="ComPsy Group", email="tuncb@chop.edu" },
 ]
@@ -12,6 +12,7 @@ maintainers = [
   {name = "ComPsy Group", email = "tuncb@chop.edu"}
 ]
 description = "Behavioral Imaging Toolbox"
+license = { text = "Creative Commons Attribution-NonCommercial 4.0 International" }
 keywords = ["computer vision", "psychology", "psychiatry", "behavior", "facial expressions", "body actions"]
 readme = "README.md"
 requires-python = ">=3.8"
@@ -23,13 +24,14 @@ dependencies = [
     'python-dateutil',
     'PyWavelets',
     'matplotlib',
-    'pandas'
+    'pandas',
+    'requests'
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "License :: Free for non-commercial use",
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"
 ]

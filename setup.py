@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setup(
     name = 'bitbox',
-    version = '2024.12dev',
+    version = '2025.07dev',
     description = 'Behavioral Imaging Toolbox',
     author = 'ComPsy Group',
     author_email = 'tuncb@chop.edu',
@@ -13,7 +13,7 @@ setup(
     long_description_content_type = 'text/markdown',
     url = 'https://github.com/compsygroup/bitbox',
     classifiers = [
-        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+        'License :: CC-BY-NC-4.0',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.8',
     ],
@@ -28,6 +28,7 @@ setup(
         'python-dateutil',
         'PyWavelets',
         'matplotlib',
-        'pandas'
+        'pandas',
+        'requests'
     ]
 )
