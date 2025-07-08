@@ -166,6 +166,14 @@ class FaceProcessor:
                 print(f"Remote session with ID {self.API_session} was initiated.")
             else:
                 raise ValueError("Failed to create a remote session at the server.")
+
+        # Auto‐undistort: if the camera model was provided as a string, run preprocess(undistort=True)
+        # check both self.camera_model (if it exists) or self.model_camera (set in subclasses like FaceProcessor3DI)
+        camera_model = getattr(self, 'camera_model', None) or getattr(self, 'model_camera', None)
+        if isinstance(camera_model, str):
+            if self.verbose:
+                print(f"Auto‐undistort: running preprocess(undistort=True) for camera_model='{camera_model}'")
+            self.preprocess(undistort=True)
     
     
     def _remote_run_command(self, endpoint, files=None, data=None):
