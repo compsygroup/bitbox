@@ -6,21 +6,22 @@ import json
 import sys
 import zipfile
 import io
+import re
 
 from time import time
 
-from ..utilities import FileCache, generate_file_hash, select_gpu
+from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
 
 class FaceProcessor:
-    def __init__(self, return_output='dict', server=None, backend=None, verbose=True):
+    def __init__(self, return_output='dict', server=None, container=None, path_3DI=None, path_3DILITE=None, verbose=True):
         self.verbose = verbose
-        self.backend = backend # new parameter to override backend settings (e.g., '3DI', '3DIlite', etc.)
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
         self.output_ext = '.bit'
         
-        self.execDIR = os.getcwd()
+        self.execDIR = None
+        self.liteDIR = None
         
         self.docker = None
         self.docker_input_dir = '/app/input'
@@ -70,20 +71,55 @@ class FaceProcessor:
                 raise ValueError(f"Server is down or unreachable.")
             
         else: # Commands will be run locally
-            # get docker image from parameter backend (if provided) or from BITBOX_DOCKER env variable
-            docker_image = self.backend or os.environ.get('BITBOX_DOCKER')
-            if docker_image:
-                if docker_image.endswith("sandbox") or docker_image.endswith(".sif"):
-                    print(f"Using backend inside a Singularity container: {docker_image}")
-                    self.docker = docker_image
+
+            if container is not None and detect_container_type(container) is not None:
+                self.docker = container
+            elif os.environ.get('BITBOX_DOCKER'):
+                self.docker = os.environ.get('BITBOX_DOCKER')
+            else:
+                # if no container is specified, check 3DI and 3DIlite paths
+                if path_3DI is not None:
+                    if os.path.exists(os.path.join(path_3DI, 'video_learn_identity')):
+                        self.execDIR = path_3DI
+                elif os.environ.get('BITBOX_3DI'):
+                    self.execDIR = os.environ.get('BITBOX_3DI')
                 else:
-                    result = os.system(f"docker images -q {docker_image} > /dev/null 2>&1")
-                    if result != 0:
-                        warnings.warn(f"The environment variable BITBOX_DOCKER is set to {docker_image}, but the image is not found.")
-                    else:
-                        print(f"Using backend inside a Docker container: {docker_image}")
-                        self.docker = docker_image
-    
+                    execDIRs = os.environ.get('PATH')
+
+                    if ';' in execDIRs:  # Windows
+                        execDIRs = execDIRs.split(';')
+                    else:  # Unix-like systems (Linux, macOS)
+                        execDIRs = execDIRs.split(':')
+                        
+                    for d in execDIRs:
+                        if os.path.exists(os.path.join(d, 'video_learn_identity')):
+                            self.execDIR = d
+                            break
+                
+                if path_3DILITE is not None:
+                    if self.execDIR is None:
+                        raise ValueError("3DI path is not found. Please make sure you defined path_3DI or BITBOX_3DI variable, along with path_3DILITE.")
+                    
+                    if os.path.exists(os.path.join(path_3DILITE, 'process_video.py')):
+                        self.liteDIR = path_3DILITE
+                elif os.environ.get('BITBOX_3DILITE'):
+                    if self.execDIR is None:
+                        raise ValueError("3DI path is not found. Please make sure you defined path_3DI or BITBOX_3DI variable, along with BITBOX_3DILITE.")
+                    
+                    self.liteDIR = os.environ.get('BITBOX_3DILITE')
+
+                else:
+                    liteDIRs = os.environ.get('PATH')
+
+                    if ';' in liteDIRs:
+                        liteDIRs = liteDIRs.split(';')
+                    else:  # Unix-like systems (Linux, macOS)
+                        liteDIRs = liteDIRs.split(':')  
+                    for d in liteDIRs:
+                        if os.path.exists(os.path.join(d, 'process_video.py')):
+                            self.liteDIR = d
+                            break
+
     
     def _local_file(self, file_path):
         file_dir = os.path.dirname(file_path)
@@ -168,8 +204,8 @@ class FaceProcessor:
                 raise ValueError("Failed to create a remote session at the server.")
 
         # Auto‐undistort: if the camera model was provided as a string, run preprocess(undistort=True)
-        # check both self.camera_model (if it exists) or self.model_camera (set in subclasses like FaceProcessor3DI)
-        camera_model = getattr(self, 'camera_model', None) or getattr(self, 'model_camera', None)
+        # check self.model_camera (set in subclasses like FaceProcessor3DI)
+        camera_model = getattr(self, 'model_camera', None)
         if isinstance(camera_model, str):
             if self.verbose:
                 print(f"Auto‐undistort: running preprocess(undistort=True) for camera_model='{camera_model}'")
@@ -235,18 +271,20 @@ class FaceProcessor:
             # executable
             # @TODO: use the minimally utilized GPU
             if self.docker:
-                if self.docker.endswith("sandbox") or self.docker.endswith(".sif"):
+                if detect_container_type(self.docker) =='singularity': 
                     cmd = f"singularity exec --nv --writable \
                         --bind {self.input_dir}:{self.docker_input_dir} \
                         --bind {self.output_dir}:{self.docker_output_dir} \
                         {self.docker} \
                         bash -c \"cd {self.docker_execDIR} && ./{executable}"
-                else:
+                elif detect_container_type(self.docker) == 'docker':
                     cmd = f"\
                         docker run --rm --gpus device={gpu_id}\
                         -v {self.input_dir}:{self.docker_input_dir}\
                         -v {self.output_dir}:{self.docker_output_dir}\
                         -w {self.docker_execDIR} {self.docker} ./{executable}"
+                else:
+                    raise ValueError("Unsupported container type. Please use Docker or Singularity.")
                         
                 # collapse all runs of whitespace into single spaces (due to use of \ in the command)
                 cmd = " ".join(cmd.split())

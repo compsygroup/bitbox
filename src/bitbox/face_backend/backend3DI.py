@@ -10,9 +10,9 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, backend=None, verbose=True):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True,container=None ,path_3DI=None, path_3DILITE=None):
         # Run the parent class init
-        super().__init__(return_output=return_output, server=server, backend=backend, verbose=verbose)
+        super().__init__(return_output=return_output, server=server, verbose=verbose, container=container, path_3DI=path_3DI, path_3DILITE=path_3DILITE)
         
         self.model_camera = camera_model
         self.model_morphable = morphable_model
@@ -21,7 +21,6 @@ class FaceProcessor3DI(FaceProcessor):
         self.model_basis = basis_model
         self.fast = fast
         
-        self.execDIR = None
         self.docker_execDIR = '/app/3DI'
         
         # specific file extension for 3DI
@@ -29,26 +28,11 @@ class FaceProcessor3DI(FaceProcessor):
         
         # if we are not using the docker container, we need to find out where the 3DI package is installed
         if self.docker is None:
-            if self.backend:
-                os.environ['BITBOX_3DI'] = self.backend
-            if os.environ.get('BITBOX_3DI'):
-                execDIRs = [os.environ.get('BITBOX_3DI')]
-            else:
-                warnings.warn("BITBOX_3DI environment variable is not set. Using default system PATH.")
-                execDIRs = os.environ.get('PATH')
-                if ';' in execDIRs:  # Windows
-                    execDIRs = execDIRs.split(';')
-                else:  # Unix-like systems (Linux, macOS)
-                    execDIRs = execDIRs.split(':')
-                    
-            for d in execDIRs:
-                if os.path.exists(os.path.join(d, 'video_learn_identity')):
-                    self.execDIR = d
-                    break
-                
+        
             if self.execDIR is None:
                 raise ValueError("3DI package is not found. Please make sure you defined BITBOX_3DI system variable or use our Docker image.")
-        
+                
+                
         # prepare configuration files
         if self.fast:
             cfgid = 2
@@ -197,8 +181,7 @@ class FaceProcessor3DI(FaceProcessor):
             return None
 
 
-    def run_all(self, undistort=False, normalize=True):
-        self.preprocess(undistort)
+    def run_all(self, normalize=True):
         rect = self.detect_faces()
         land = self.detect_landmarks()
         exp_glob, pose, land_can = self.fit()
@@ -208,44 +191,27 @@ class FaceProcessor3DI(FaceProcessor):
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, backend=None, verbose=True):
+    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True,container= None ,path_3DI=None, path_3DILITE=None):
         # Run the parent class init
         super().__init__(camera_model=camera_model,
                          landmark_model=landmark_model,
                          morphable_model=morphable_model,
                          basis_model=basis_model,
                          fast=fast,
+                         container=container,    
+                         path_3DI=path_3DI,
+                         path_3DILITE=path_3DILITE,
                          return_output=return_output,
-                         server=server,
-                         backend=backend,    
+                         server=server,    
                          verbose=verbose)
         
         self.docker_execDIR = '/app/3DI'
         
         # specific file extension for 3DI-lite
         self.output_ext = '.3DIl'
-    
-        self.liteDIR = None
         
         # if we are not using the docker container, we need to find out where the 3DI-lite package is installed
         if self.docker is None:
-            if self.backend:
-                os.environ['BITBOX_3DI_LITE'] = self.backend
-            if os.environ.get('BITBOX_3DI_LITE'):
-                execDIRs = [os.environ.get('BITBOX_3DI_LITE')]
-            else:
-                warnings.warn("BITBOX_3DI_LITE environment variable is not set. Using default system PATH.")
-                execDIRs = os.environ.get('PATH')
-                if ';' in execDIRs:  # Windows
-                    execDIRs = execDIRs.split(';')
-                else:  # Unix-like systems (Linux, macOS)
-                    execDIRs = execDIRs.split(':')
-                    
-            for d in execDIRs:
-                if os.path.exists(os.path.join(d, 'process_video.py')):
-                    self.liteDIR = d
-                    break
-                
             if self.liteDIR is None:
                 raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
         
