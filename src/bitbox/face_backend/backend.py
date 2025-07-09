@@ -79,7 +79,6 @@ class FaceProcessor:
             else:
                 # if no container is specified, check 3DI and 3DIlite paths
                 if path_3DI is not None:
-                    print("Using 3DI path: %s" % path_3DI)
                     if os.path.exists(os.path.join(path_3DI, 'video_learn_identity')):
                         self.execDIR = path_3DI
                 elif os.environ.get('BITBOX_3DI'):
@@ -98,7 +97,6 @@ class FaceProcessor:
                             break
                 
                 if path_3DILITE is not None:
-                    print("Using 3DIlite path: %s" % path_3DILITE)
                     if self.execDIR is None:
                         raise ValueError("3DI path is not found. Please make sure you defined path_3DI or BITBOX_3DI variable, along with path_3DILITE.")
                     
