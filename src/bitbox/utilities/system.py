@@ -29,8 +29,7 @@ def detect_container_type(image):
     """
     if image and image.endswith(("sandbox", ".sif")):
         return "singularity"
-
-    if image and ":" in image:
+    else:
         # check if docker image exists locally
         completed = subprocess.run(
             ["docker", "images", "-q", image],
@@ -38,6 +37,7 @@ def detect_container_type(image):
         )
         if completed.returncode == 0:
             return "docker"
-        warnings.warn(f"Docker image '{image}' not found locally.")
+        
+        warnings.warn(f"Docker image '{image}' not found.")
 
     return None

@@ -13,20 +13,19 @@ from time import time
 from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
 
 class FaceProcessor:
-    def __init__(self, return_output='dict', server=None, container=None, path_3DI=None, path_3DILITE=None, verbose=True):
+    def __init__(self, runtime=None, return_output='dict', server=None, verbose=True):
         self.verbose = verbose
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
         self.output_ext = '.bit'
         
+        self.runtime = runtime
         self.execDIR = None
-        self.liteDIR = None
-        
+         
         self.docker = None
         self.docker_input_dir = '/app/input'
         self.docker_output_dir = '/app/output'
-        self.docker_execDIR = '/app'
         
         self.cache = FileCache()
         
@@ -70,56 +69,36 @@ class FaceProcessor:
             except requests.RequestException:
                 raise ValueError(f"Server is down or unreachable.")
             
-        else: # Commands will be run locally
-
-            if container is not None and detect_container_type(container) is not None:
-                self.docker = container
-            elif os.environ.get('BITBOX_DOCKER'):
+    
+    def _set_runtime(self, name='3DI', variable='BITBOX_3DI', executable='video_learn_identity', docker_path='/app/3DI'):
+        # check if we are using a Docker image
+        if self.runtime is not None:
+            # if it is a path, that means it is not a Docker image but it can be a Singularity sandbox directory
+            if bool(os.path.dirname(self.runtime)) and os.path.isdir(self.runtime):
+                if detect_container_type(self.runtime) is not None:
+                    self.docker = self.runtime
+        elif os.environ.get('BITBOX_DOCKER'):
+            # check if it is a valid image
+            if detect_container_type(os.environ.get('BITBOX_DOCKER')) is not None:
                 self.docker = os.environ.get('BITBOX_DOCKER')
-            else:
-                # if no container is specified, check 3DI and 3DIlite paths
-                if path_3DI is not None:
-                    if os.path.exists(os.path.join(path_3DI, 'video_learn_identity')):
-                        self.execDIR = path_3DI
-                elif os.environ.get('BITBOX_3DI'):
-                    self.execDIR = os.environ.get('BITBOX_3DI')
+    
+        # if we are not using the docker container, we need to find out where the package is installed
+        if self.docker is None:
+            if self.runtime and bool(os.path.dirname(self.runtime)) and os.path.isdir(self.runtime):
+                # check if it is a valid path including the executable
+                if os.path.exists(os.path.join(self.runtime, executable)):
+                    self.execDIR = self.runtime
                 else:
-                    execDIRs = os.environ.get('PATH')
-
-                    if ';' in execDIRs:  # Windows
-                        execDIRs = execDIRs.split(';')
-                    else:  # Unix-like systems (Linux, macOS)
-                        execDIRs = execDIRs.split(':')
-                        
-                    for d in execDIRs:
-                        if os.path.exists(os.path.join(d, 'video_learn_identity')):
-                            self.execDIR = d
-                            break
-                
-                if path_3DILITE is not None:
-                    if self.execDIR is None:
-                        raise ValueError("3DI path is not found. Please make sure you defined path_3DI or BITBOX_3DI variable, along with path_3DILITE.")
-                    
-                    if os.path.exists(os.path.join(path_3DILITE, 'process_video.py')):
-                        self.liteDIR = path_3DILITE
-                elif os.environ.get('BITBOX_3DILITE'):
-                    if self.execDIR is None:
-                        raise ValueError("3DI path is not found. Please make sure you defined path_3DI or BITBOX_3DI variable, along with BITBOX_3DILITE.")
-                    
-                    self.liteDIR = os.environ.get('BITBOX_3DILITE')
-
-                else:
-                    liteDIRs = os.environ.get('PATH')
-
-                    if ';' in liteDIRs:
-                        liteDIRs = liteDIRs.split(';')
-                    else:  # Unix-like systems (Linux, macOS)
-                        liteDIRs = liteDIRs.split(':')  
-                    for d in liteDIRs:
-                        if os.path.exists(os.path.join(d, 'process_video.py')):
-                            self.liteDIR = d
-                            break
-
+                    raise ValueError(f"{name} package is not found. Please make sure runtime is set to a valid {name} path.")
+            elif os.environ.get(variable): # we need to find the package in the system
+                    # check if it is a valid path including the executable
+                    if os.path.exists(os.path.join(os.environ.get(variable), executable)):
+                        self.execDIR = os.environ.get(variable)
+                    else:
+                        raise ValueError(f"{name} package is not found. Please make sure {variable} system variable is set to a valid {name} path.")
+        else:
+            self.execDIR = docker_path       
+    
     
     def _local_file(self, file_path):
         file_dir = os.path.dirname(file_path)
@@ -203,15 +182,7 @@ class FaceProcessor:
             else:
                 raise ValueError("Failed to create a remote session at the server.")
 
-        # Auto‐undistort: if the camera model was provided as a string, run preprocess(undistort=True)
-        # check self.model_camera (set in subclasses like FaceProcessor3DI)
-        camera_model = getattr(self, 'model_camera', None)
-        if isinstance(camera_model, str):
-            if self.verbose:
-                print(f"Auto‐undistort: running preprocess(undistort=True) for camera_model='{camera_model}'")
-            self.preprocess(undistort=True)
-    
-    
+
     def _remote_run_command(self, endpoint, files=None, data=None):
         url = self.API_url + endpoint
                 
@@ -262,7 +233,7 @@ class FaceProcessor:
         return None
            
     
-    def _run_command(self, executable, parameters, output_file_idx, system_call):
+    def _run_command(self, executable, parameters, system_call):
         # use a specific GPU with the least memory used
         gpu_id = select_gpu()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
@@ -276,13 +247,13 @@ class FaceProcessor:
                         --bind {self.input_dir}:{self.docker_input_dir} \
                         --bind {self.output_dir}:{self.docker_output_dir} \
                         {self.docker} \
-                        bash -c \"cd {self.docker_execDIR} && ./{executable}"
+                        bash -c \"cd {self.execDIR} && ./{executable}"
                 elif detect_container_type(self.docker) == 'docker':
                     cmd = f"\
                         docker run --rm --gpus device={gpu_id}\
                         -v {self.input_dir}:{self.docker_input_dir}\
                         -v {self.output_dir}:{self.docker_output_dir}\
-                        -w {self.docker_execDIR} {self.docker} ./{executable}"
+                        -w {self.execDIR} {self.docker} ./{executable}"
                 else:
                     raise ValueError("Unsupported container type. Please use Docker or Singularity.")
                         
@@ -394,7 +365,7 @@ class FaceProcessor:
                 }
                 self._remote_run_command('execute', data=data)
             else: # Running locally
-                cmd = self._run_command(executable, parameters, output_file_idx, system_call)
+                cmd = self._run_command(executable, parameters, system_call)
             
             if self.verbose:
                 print(" (Took %.2f secs)" % (time()-t0))

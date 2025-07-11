@@ -10,10 +10,10 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True,container=None ,path_3DI=None, path_3DILITE=None):
+    def __init__(self, runtime=None, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
         # Run the parent class init
-        super().__init__(return_output=return_output, server=server, verbose=verbose, container=container, path_3DI=path_3DI, path_3DILITE=path_3DILITE)
-        
+        super().__init__(return_output=return_output, server=server, verbose=verbose, runtime=runtime)
+
         self.model_camera = camera_model
         self.model_morphable = morphable_model
         self.model_landmark = landmark_model
@@ -21,28 +21,23 @@ class FaceProcessor3DI(FaceProcessor):
         self.model_basis = basis_model
         self.fast = fast
         
-        self.docker_execDIR = '/app/3DI'
-        
-        # specific file extension for 3DI
-        self.output_ext = '.3DI'
-        
-        # if we are not using the docker container, we need to find out where the 3DI package is installed
-        if self.docker is None:
-        
+        # run the following only if this is not called by a child class
+        if self.__class__ is FaceProcessor3DI:
+            # specific file extension for 3DI
+            self.output_ext = '.3DI'
+            
+            if not self.API:
+                self._set_runtime()
+            
             if self.execDIR is None:
                 raise ValueError("3DI package is not found. Please make sure you defined BITBOX_3DI system variable or use our Docker image.")
-                
-                
-        # prepare configuration files
-        if self.fast:
-            cfgid = 2
-        else:
-            cfgid = 1
-        
-        if self.docker is None:
+                    
+            # prepare configuration files
+            if self.fast:
+                cfgid = 2
+            else:
+                cfgid = 1
             self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
-        else:
-            self.config_landmarks = os.path.join(self.docker_execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI'
@@ -52,6 +47,17 @@ class FaceProcessor3DI(FaceProcessor):
         self.base_metadata['fast'] = self.fast
         self.base_metadata['local_bases'] = self.model_basis
             
+    
+    def io(self, input_file=None, output_dir=None):
+        # run the parent class io method
+        super().io(input_file=input_file, output_dir=output_dir)
+        
+        # Auto‐undistort: if the camera model was provided as a string, run preprocess(undistort=True)
+        if isinstance(self.model_camera, str):
+            if self.verbose:
+                print(f"Auto‐undistort: running video undistortion for camera_model='{self.model_camera}'")
+            self.preprocess(undistort=True)
+    
                 
     def preprocess(self, undistort=False):
         # run undistortion if needed
@@ -60,14 +66,15 @@ class FaceProcessor3DI(FaceProcessor):
             # @TODO: check if self.model_camera is a valid file and includes undistortion parameters
             
             self._execute('video_undistort',
-                                   [self.file_input, self.model_camera, self.file_input_prep],
-                                   "video undistortion",
-                                   output_file_idx=-1)
+                          [self.file_input, self.model_camera, self.file_input_prep],
+                          "video undistortion",
+                          output_file_idx=-1)
         
-            self.file_input = self.file_input_prep
-            
-            
+        self.file_input = self.file_input_prep
+
+
     def detect_faces(self):
+        print(f"Running at {self.execDIR}")
         self._execute('video_detect_face',
                       [self.file_input, self.file_rectangles],
                       "face detection",
@@ -191,29 +198,33 @@ class FaceProcessor3DI(FaceProcessor):
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True,container= None ,path_3DI=None, path_3DILITE=None):
+    def __init__(self, runtime=None, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
         # Run the parent class init
-        super().__init__(camera_model=camera_model,
+        super().__init__(runtime=runtime,
+                         camera_model=camera_model,
                          landmark_model=landmark_model,
                          morphable_model=morphable_model,
                          basis_model=basis_model,
                          fast=fast,
-                         container=container,    
-                         path_3DI=path_3DI,
-                         path_3DILITE=path_3DILITE,
                          return_output=return_output,
                          server=server,    
                          verbose=verbose)
         
-        self.docker_execDIR = '/app/3DI'
-        
         # specific file extension for 3DI-lite
         self.output_ext = '.3DIl'
+    
+        if not self.API:  
+            self._set_runtime(name='3DI-lite', variable='BITBOX_3DI_LITE', executable='process_video.py', docker_path='/app/3DI_lite')
+    
+        if self.execDIR is None:
+            raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
         
-        # if we are not using the docker container, we need to find out where the 3DI-lite package is installed
-        if self.docker is None:
-            if self.liteDIR is None:
-                raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
+        # prepare configuration files
+        if self.fast:
+            cfgid = 2
+        else:
+            cfgid = 1
+        self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI-lite'
@@ -224,23 +235,13 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
-        
-        # @TODO: remove this part when the 3DI code is updated so that we don't need to change the working directory
-        # set the working directory
-        tmp = self.execDIR
-        self.execDIR = self.liteDIR
-        self.docker_execDIR = '/app/3DI_lite'
-        
+             
         # STEP 1-4: learn identity, shape and texture model, pose and expression
         self._execute('process_video.py',
                     [self.file_input, self.file_landmarks, self.file_expression_smooth, self.file_shape_coeff, self.file_texture_coeff, self.file_illumination, self.file_pose_smooth],
                     "expression and pose estimation",
                     output_file_idx=[-5, -4, -3, -2, -1])
         
-        # @TODO: remove this part when the 3DI code is updated so that we don't need to change the working directory
-        self.execDIR = tmp
-        self.docker_execDIR = '/app/3DI'
-            
         # STEP 5: Canonicalized landmarks
         self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
                     [self.file_expression_smooth, self.file_landmarks_canonicalized, self.model_morphable],
@@ -265,44 +266,3 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
             return out_exp, out_pose, out_land_can
         else:
             return None, None, None
-        
-    
-class FaceProcessor3DITest(FaceProcessor3DI):
-    def __init__(self):
-        self.verbose = True
-        self.server = None
-        self.input_dir = None
-        self.output_dir = None
-        self.file_input = None
-        self.output_ext = '.test'
-        
-        self.execDIR = None
-        self.docker = None
-        self.base_metadata = None
-        
-        self.model_camera = 30
-        self.model_morphable = 'BFMmm-19830'
-        self.model_landmark = 'global4'
-        self.model_basis = '0.0.1.F591-cd-K32d'
-        self.fast = False
-        self.liteDIR = None
-        
-        self.cache = FileCache()
-        
-        self.return_output = None
-        
-        self.execDIR = os.getcwd()
-        
-        # prepare configuration files
-        if self.fast:
-            cfgid = 2
-        else:
-            cfgid = 1
-        
-        self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
-        
-        
-    def _run_command(self, executable, parameters, output_file_idx, system_call):        
-        for idx in output_file_idx:
-            with open(parameters[idx], 'w') as file:
-                file.write("This is an empty file for testing purposes. Well, it is not literally 'empty' but, you know, it is not what you expect.")

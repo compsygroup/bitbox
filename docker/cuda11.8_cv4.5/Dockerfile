@@ -15,6 +15,7 @@ RUN python3 prepare_BFM.py
 # make 3DI-lite standalone (not dependent on 3DI)
 WORKDIR /app/3DI_lite
 RUN cp /app/3DI/video_detect_* .
+RUN cp /app/3DI/video_undistort .
 RUN cp /app/3DI/models/deploy.prototxt models/
 RUN cp /app/3DI/models/res10_300x300_ssd_iter_140000_fp16.caffemodel models/
 RUN cp /app/3DI/models/haarcascade_frontalface_default.xml models/
