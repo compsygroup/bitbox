@@ -10,9 +10,9 @@ from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, runtime=None, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
+    def __init__(self, *args, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, **kwargs):
         # Run the parent class init
-        super().__init__(return_output=return_output, server=server, verbose=verbose, runtime=runtime)
+        super().__init__(*args, **kwargs)
 
         self.model_camera = camera_model
         self.model_morphable = morphable_model
@@ -57,8 +57,8 @@ class FaceProcessor3DI(FaceProcessor):
             if self.verbose:
                 print(f"Auto‐undistort: running video undistortion for camera_model='{self.model_camera}'")
             self.preprocess(undistort=True)
-    
-                
+        
+
     def preprocess(self, undistort=False):
         # run undistortion if needed
         if undistort==True:
@@ -74,7 +74,6 @@ class FaceProcessor3DI(FaceProcessor):
 
 
     def detect_faces(self):
-        print(f"Running at {self.execDIR}")
         self._execute('video_detect_face',
                       [self.file_input, self.file_rectangles],
                       "face detection",
@@ -167,7 +166,7 @@ class FaceProcessor3DI(FaceProcessor):
             
             return out_exp, out_pose, out_land_can
         else:
-            return None, None, None
+            return None
         
 
     def localized_expressions(self, normalize=True):
@@ -191,24 +190,28 @@ class FaceProcessor3DI(FaceProcessor):
     def run_all(self, normalize=True):
         rect = self.detect_faces()
         land = self.detect_landmarks()
-        exp_glob, pose, land_can = self.fit()
+        if self.return_output == 'file':
+            exp = self.fit()
+        elif self.return_output == 'dict':
+            exp_glob, pose, land_can = self.fit()
+        else:
+            self.fit()
         exp_loc = self.localized_expressions(normalize=normalize)
         
-        return rect, land, exp_glob, pose, land_can, exp_loc
+        if self.return_output == 'file':
+            files = (rect) + (land) + exp + (exp_loc)
+            return files
+        elif self.return_output == 'dict':
+            return rect, land, exp_glob, pose, land_can, exp_loc
+        else:
+            return None
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, runtime=None, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, return_output='dict', server=None, verbose=True):
+    def __init__(self, *args, basis_model='0.0.1.F591-cd-K32d', **kwargs):
         # Run the parent class init
-        super().__init__(runtime=runtime,
-                         camera_model=camera_model,
-                         landmark_model=landmark_model,
-                         morphable_model=morphable_model,
-                         basis_model=basis_model,
-                         fast=fast,
-                         return_output=return_output,
-                         server=server,    
-                         verbose=verbose)
+        super().__init__(*args, **kwargs)
+        self.basis_model = basis_model
         
         # specific file extension for 3DI-lite
         self.output_ext = '.3DIl'
@@ -265,4 +268,4 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
             
             return out_exp, out_pose, out_land_can
         else:
-            return None, None, None
+            return None

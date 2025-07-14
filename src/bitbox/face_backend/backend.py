@@ -13,8 +13,9 @@ from time import time
 from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
 
 class FaceProcessor:
-    def __init__(self, runtime=None, return_output='dict', server=None, verbose=True):
+    def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
         self.verbose = verbose
+        self.debug = debug
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
@@ -72,16 +73,11 @@ class FaceProcessor:
     
     def _set_runtime(self, name='3DI', variable='BITBOX_3DI', executable='video_learn_identity', docker_path='/app/3DI'):
         # check if we are using a Docker image
-        if self.runtime is not None:
-            # if it is a path, that means it is not a Docker image but it can be a Singularity sandbox directory
-            if bool(os.path.dirname(self.runtime)) and os.path.isdir(self.runtime):
-                if detect_container_type(self.runtime) is not None:
-                    self.docker = self.runtime
-        elif os.environ.get('BITBOX_DOCKER'):
-            # check if it is a valid image
-            if detect_container_type(os.environ.get('BITBOX_DOCKER')) is not None:
-                self.docker = os.environ.get('BITBOX_DOCKER')
-    
+        if self.runtime and detect_container_type(self.runtime):
+            self.docker = self.runtime
+        elif (not self.runtime) and os.environ.get('BITBOX_DOCKER') and detect_container_type(os.environ.get('BITBOX_DOCKER')):
+            self.docker = os.environ.get('BITBOX_DOCKER')
+        
         # if we are not using the docker container, we need to find out where the package is installed
         if self.docker is None:
             if self.runtime and bool(os.path.dirname(self.runtime)) and os.path.isdir(self.runtime):
@@ -181,6 +177,11 @@ class FaceProcessor:
                 print(f"Remote session with ID {self.API_session} was initiated.")
             else:
                 raise ValueError("Failed to create a remote session at the server.")
+            
+        if self.debug:
+            self.verbose = False
+            print(f"Docker={self.docker}")
+            print(f"Executables={self.execDIR}")
 
 
     def _remote_run_command(self, endpoint, files=None, data=None):

@@ -1,6 +1,7 @@
 import subprocess
 import re
 import warnings
+import os
 
 def select_gpu():
     try:
@@ -27,17 +28,18 @@ def detect_container_type(image):
       - "docker"      if image contains ':' and exists locally
       - None          otherwise
     """
-    if image and image.endswith(("sandbox", ".sif")):
+    # if it is a path, that means it is not a Docker image but it can be a Singularity sandbox directory
+    if bool(os.path.dirname(image)) and os.path.isdir(image) and image.endswith("sandbox"):
         return "singularity"
-    else:
+    elif image.endswith(".sif"):
+        return "singularity"
+    elif not bool(os.path.dirname(image)):
         # check if docker image exists locally
         completed = subprocess.run(
-            ["docker", "images", "-q", image],
+            ["docker", "images", "-q", image.lower()],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         if completed.returncode == 0:
             return "docker"
-        
-        warnings.warn(f"Docker image '{image}' not found.")
 
     return None
