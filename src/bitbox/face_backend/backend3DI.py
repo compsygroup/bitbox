@@ -29,15 +29,16 @@ class FaceProcessor3DI(FaceProcessor):
             if not self.API:
                 self._set_runtime()
             
-            if self.execDIR is None:
-                raise ValueError("3DI package is not found. Please make sure you defined BITBOX_3DI system variable or use our Docker image.")
+                if self.execDIR is None:
+                    raise ValueError("3DI package is not found. Please make sure you defined BITBOX_3DI system variable or use our Docker image.")
                     
-            # prepare configuration files
-            if self.fast:
-                cfgid = 2
-            else:
-                cfgid = 1
-            self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
+                # prepare configuration files
+                if self.fast:
+                    cfgid = 2
+                else:
+                    cfgid = 1
+                    
+                self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI'
@@ -219,15 +220,15 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         if not self.API:  
             self._set_runtime(name='3DI-lite', variable='BITBOX_3DI_LITE', executable='process_video.py', docker_path='/app/3DI_lite')
     
-        if self.execDIR is None:
-            raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
-        
-        # prepare configuration files
-        if self.fast:
-            cfgid = 2
-        else:
-            cfgid = 1
-        self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
+            if self.execDIR is None:
+                raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
+            
+            # prepare configuration files
+            if self.fast:
+                cfgid = 2
+            else:
+                cfgid = 1
+            self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI-lite'
