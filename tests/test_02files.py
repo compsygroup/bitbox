@@ -22,11 +22,10 @@ def test_creates_all_files(tmp_path, lite):
     # choose processor class
     cls = FP3DIlite if lite else FP3DI
     processor = cls(runtime='bitbox:cuda12', verbose=False, return_output=None)
-    processor.cache.change_retention_period('3 minutes')
 
     try:
         input = os.path.join(os.path.dirname(__file__), 'data', 'elaine.mp4')
-        output = os.path.join(os.path.dirname(__file__), 'output')
+        output = str(tmp_path)
         
         processor.io(input_file=input, output_dir=output)
         processor.detect_faces()
@@ -35,7 +34,8 @@ def test_creates_all_files(tmp_path, lite):
         processor.localized_expressions()
         
         # verify existence of each expected file
-        for file_path in expected_files[int(lite)]:
-            assert file_path.exists(), f"Missing file: {file_path}"
+        for file_name in expected_files[int(lite)]:
+            file_path = os.path.join(output, file_name)
+            assert (os.path.exists(file_path) and os.path.isfile(file_path)), f"Missing file: {file_path}"
     except ValueError:
         assert False

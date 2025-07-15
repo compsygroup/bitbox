@@ -30,7 +30,7 @@ def load_test_cases():
     "lite, BITBOX_3DI, BITBOX_3DI_LITE, BITBOX_DOCKER, runtime, expected_docker, expected_executables",
     load_test_cases()
 )
-def test_runtime_selection(capsys, lite, BITBOX_3DI, BITBOX_3DI_LITE, BITBOX_DOCKER, runtime, expected_docker, expected_executables):
+def test_runtime_selection(capsys, tmp_path, lite, BITBOX_3DI, BITBOX_3DI_LITE, BITBOX_DOCKER, runtime, expected_docker, expected_executables):
     # set or unset env vars
     if BITBOX_3DI is not None:
         os.environ['BITBOX_3DI'] = BITBOX_3DI
@@ -54,7 +54,7 @@ def test_runtime_selection(capsys, lite, BITBOX_3DI, BITBOX_3DI_LITE, BITBOX_DOC
         processor = cls(runtime=runtime, debug=True)
         
         input = os.path.join(os.path.dirname(__file__), 'data', 'elaine.mp4')
-        output = os.path.join(os.path.dirname(__file__), 'output')
+        output = str(tmp_path)
         
         processor.io(input_file=input, output_dir=output)
         
