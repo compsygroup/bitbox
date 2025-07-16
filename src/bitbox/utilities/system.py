@@ -28,6 +28,8 @@ def detect_container_type(image):
       - "docker"      if image contains ':' and exists locally
       - None          otherwise
     """
+    if not image:
+        return None
     # if it is a path, that means it is not a Docker image but it can be a Singularity sandbox directory
     if bool(os.path.dirname(image)) and os.path.isdir(image) and image.endswith("sandbox"):
         return "singularity"

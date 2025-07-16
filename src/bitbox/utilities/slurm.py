@@ -1,6 +1,5 @@
 import os
 import paramiko
-import inspect
 
 def connect_slurm(cfg, verbose=True):
     """
@@ -209,7 +208,7 @@ def write_python_script(
         return python_path
     
 
-def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
+def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runtime='bitbox:latest'):
     """
     Submit a job to Slurm using the provided processor and configuration.
     If input_file or output_dir are specified, set them on the processor.
@@ -222,7 +221,12 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
     sandbox_dir = os.path.join(remote_root, 'bitbox', "bitbox_sandbox")
     ssh_client=connect_slurm(slurm_config, verbose=True)
 
-    processor_kwargs = get_core_args (processor)
+    processor_kwargs = {
+        k: v for k, v in processor.init_args.items()
+        if k not in {'self', 'server', '__class__'}
+    }
+
+    processor_kwargs.update({f"arg_{i}": arg for i, arg in enumerate(processor_kwargs.pop('args', []))}, **processor_kwargs.pop('kwargs', {}))
 
     write_python_script(
         input_file   = os.path.join(remote_input_dir, input_file),
@@ -236,7 +240,7 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
     script_remote = write_sbatch_script(
                 slurm_config=slurm_config,
                 ssh_client= ssh_client,
-                runtime=processor.runtime if hasattr(processor, 'runtime') else sandbox_dir,
+                runtime = runtime,
                 remote_path=os.path.join(base_remote, "run_bitbox_ssh.sh"),
                 output_dir=remote_output_dir
             )
@@ -253,16 +257,3 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
 
     ssh_client.close()
     return job_response.split()[-1] if job_response else None
-
-
-def get_core_args(processor):
-    return {
-        'verbose':       getattr(processor, 'verbose', None),
-        'runtime':       getattr(processor, 'runtime', None),
-        'camera_model':  getattr(processor, 'model_camera', None),
-        'fast':          getattr(processor, 'fast', None),
-        'landmark_model':getattr(processor, 'model_landmark', None),
-        'basis_model':   getattr(processor, 'model_basis', None),
-        'return_output': getattr(processor, 'return_output', None),
-        'debug':         getattr(processor, 'debug', None),
-    }

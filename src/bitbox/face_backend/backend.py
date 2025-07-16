@@ -11,13 +11,14 @@ from time import time
 
 from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
 class FaceProcessor:
-    def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
+    def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False,slurm=False):
         self.verbose = verbose
         self.debug = debug
         self.input_dir = None
         self.output_dir = None
         self.file_input = None
         self.output_ext = '.bit'
+        self.slurm = slurm
         
         self.runtime = runtime
         self.execDIR = None
