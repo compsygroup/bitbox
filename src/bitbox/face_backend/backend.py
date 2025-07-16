@@ -6,12 +6,10 @@ import json
 import sys
 import zipfile
 import io
-import re
 
 from time import time
 
 from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
-
 class FaceProcessor:
     def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
         self.verbose = verbose

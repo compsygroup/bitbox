@@ -7,3 +7,4 @@ PyWavelets
 matplotlib
 pandas
 requests
+paramiko
