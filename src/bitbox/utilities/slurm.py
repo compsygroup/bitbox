@@ -156,8 +156,8 @@ def write_python_script(
     input_file: str,
     output_dir: str,
     python_path: str = 'tmp/run_facial_processing.py',
-    processor_class: str = 'FaceProcessor3DI',
-    processor_kwargs: dict = None,
+    processor = None,
+    runtime: str = 'bitbox:latest',
     ssh_client: paramiko.SSHClient = None,
     remote_path: str = None
 ) -> str:
@@ -171,6 +171,9 @@ def write_python_script(
     Otherwise, writes locally to python_path.
     Returns the path to the generated script (local or remote).
     """
+
+    processor_class = processor.__class__.__name__ if processor else 'FaceProcessor3DI'
+
     # build script lines
     lines = [
         "#!/usr/bin/env python3",
@@ -180,16 +183,36 @@ def write_python_script(
         f"output_dir = '{output_dir}'",
         "",
     ]
+
+    init = {
+        k: v
+        for k, v in processor.init_args.items()
+        if k not in {'self', 'server', '__class__', 'slurm'}
+    }
+    args   = init.pop('args', [])
+    extras = init.pop('kwargs', {})
+    extras.pop('slurm', None)
+
+    processor_kwargs = {
+        **{f"arg_{i}": arg for i, arg in enumerate(args)},
+        **extras,
+        **init,
+    }
+
     if processor_kwargs:
         for k, v in processor_kwargs.items():
-            val = f"'{v}'" if isinstance(v, str) else v
-            lines.append(f"{k} = {val}")
+            lines.append(f"{k} = {repr(v)}")
         lines.append("")
-    args_list = [f"{k}={k}" for k in (processor_kwargs or {}).keys()]
-    args_str = ", ".join(args_list)
+
+    args_str = ", ".join(f"{k}={k}" for k in processor_kwargs)
+    if args_str:
+        full_args = f"{args_str}, runtime={repr(runtime)}"
+    else:
+        full_args = f"runtime={repr(runtime)}"
+
     lines.extend([
         "# instantiate and run",
-        f"processor = FP({args_str})" if args_str else "processor = FP()",
+        f"processor = FP({full_args})" if full_args else "processor = FP()",
         "processor.io(input_file=input_file, output_dir=output_dir)",
         "rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=True)",
     ])
@@ -218,21 +241,13 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runti
     base_remote = os.path.join(remote_root, os.getlogin()) # impute with the current user name
     remote_input_dir  = slurm_config.get('remote_input_dir') or os.path.join(base_remote, 'input')
     remote_output_dir = os.path.join(slurm_config.get('remote_output_dir'),output_dir) or os.path.join(base_remote, 'output')
-    sandbox_dir = os.path.join(remote_root, 'bitbox', "bitbox_sandbox")
     ssh_client=connect_slurm(slurm_config, verbose=True)
-
-    processor_kwargs = {
-        k: v for k, v in processor.init_args.items()
-        if k not in {'self', 'server', '__class__'}
-    }
-
-    processor_kwargs.update({f"arg_{i}": arg for i, arg in enumerate(processor_kwargs.pop('args', []))}, **processor_kwargs.pop('kwargs', {}))
 
     write_python_script(
         input_file   = os.path.join(remote_input_dir, input_file),
         output_dir   = remote_output_dir,
-        processor_class = processor.__class__.__name__,
-        processor_kwargs = processor_kwargs,     # ← use your filtered dict here
+        processor = processor, 
+        runtime = runtime,
         ssh_client   = ssh_client,
         remote_path  = os.path.join(base_remote, "run_face_processing.py")
     )

@@ -10,7 +10,7 @@ slurm_config = {
     'remote_input_dir': 'hpc/data/path_to_data_directory/',
     'remote_output_dir': 'hpc/data/path_to_output_directory/'
 }
+processor = FP(fast=True, verbose=True, slurm=True) 
 
-processor = FP(runtime='hpc/singularity/bitbox_sandbox',fast=True, verbose=True) 
-
-jobID = slurm_submit(processor, slurm_config, input_file=input_file, output_dir=output_dir) # submits slurm job to server and return jobID
+# submits slurm job to server and return jobID
+jobID = slurm_submit(processor, slurm_config, input_file=input_file, output_dir=output_dir,runtime='bitbox:latest') 
