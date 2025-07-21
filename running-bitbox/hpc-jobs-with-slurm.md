@@ -1,2 +1,0 @@
-# HPC Jobs with Slurm
-
