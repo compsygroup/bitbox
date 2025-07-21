@@ -237,7 +237,7 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runti
     If input_file or output_dir are specified, set them on the processor.
     Returns the job ID.
     """
-    remote_root = "/mnt/isilon/schultz_lab/cluster/isilon_usr/bitbox_compsy"
+    remote_root = slurm_config.get('remote_root') or slurm_config.get('remote_output_dir') 
     base_remote = os.path.join(remote_root, os.getlogin()) # impute with the current user name
     remote_input_dir  = slurm_config.get('remote_input_dir') or os.path.join(base_remote, 'input')
     remote_output_dir = os.path.join(slurm_config.get('remote_output_dir'),output_dir) or os.path.join(base_remote, 'output')
@@ -272,3 +272,37 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runti
 
     ssh_client.close()
     return job_response.split()[-1] if job_response else None
+
+def slurm_status(job_id, slurm_config):
+    """
+    Check a Slurm job’s state by ID.
+
+    Returns:
+      - the state string (e.g. “RUNNING”, “COMPLETED”)
+      - “NOT FOUND” if the job isn’t in the queue
+      - raises RuntimeError on SSH or Slurm errors
+    """
+    ssh = connect_slurm(slurm_config, verbose=True)
+    try:
+        cmd = f"squeue -h -j {job_id} -o %T"
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        exit_code = stdout.channel.recv_exit_status()
+
+        out = stdout.read().decode().strip()
+        err = stderr.read().decode().strip()
+
+        if exit_code != 0:
+            # squeue exits non-zero when the job ID doesn’t exist
+            result = "COMPLETED"
+        else:
+            result = out or "UNKNOWN"
+
+        if err and exit_code == 0:
+            # sometimes warnings slip through
+            print("SLURM WARNING:", err)
+
+        print(f"Job {job_id}: {result}")
+
+        return result
+    finally:
+        ssh.close()
