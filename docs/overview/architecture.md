@@ -1,3 +1,20 @@
+---
+layout:
+  width: default
+  title:
+    visible: false
+  description:
+    visible: false
+  tableOfContents:
+    visible: true
+  outline:
+    visible: true
+  pagination:
+    visible: true
+  metadata:
+    visible: false
+---
+
 # Architecture
 
 <h2 align="center"><strong>Architecture</strong></h2>

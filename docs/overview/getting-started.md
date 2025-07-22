@@ -1,3 +1,20 @@
+---
+layout:
+  width: default
+  title:
+    visible: false
+  description:
+    visible: false
+  tableOfContents:
+    visible: true
+  outline:
+    visible: true
+  pagination:
+    visible: true
+  metadata:
+    visible: false
+---
+
 # Getting Started
 
 <h2 align="center"><strong>Getting Started</strong></h2>
