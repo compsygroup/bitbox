@@ -9,7 +9,7 @@
   * [Roadmap](overview/roadmap.md)
   * [About](overview/about.md)
 * [Running Bitbox](running-bitbox/README.md)
-  * [Standalone Processor](running-bitbox/standalone-processor.md)
+  * [Standalone Mode](running-bitbox/standalone-mode.md)
   * [Client-Server Mode](running-bitbox/client-server-mode.md)
   * [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
 * [Psychomotor Behavior](psychomotor-behavior/README.md)
