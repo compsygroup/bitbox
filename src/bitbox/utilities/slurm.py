@@ -84,6 +84,7 @@ def write_sbatch_script(
     remote_path: str = None,
     runtime: str = None,
     output_dir: str = '/mnt/isilon/schultz_lab/tmp_output',
+    python_path: str = 'tmp/run_face_processing.py',
 ) -> str:
     """
     Generate an SBATCH script that:
@@ -101,6 +102,8 @@ def write_sbatch_script(
     mem          = slurm_config.get('mem', '10G')
     job_name     = slurm_config.get('job_name', 'bitbox_job')
     output_dir   = output_dir
+    python_path = python_path
+    tmp_dir = os.path.join(output_dir, "tmp")
 
 
     lines = [
@@ -110,8 +113,8 @@ def write_sbatch_script(
         f"#SBATCH --cpus-per-task={cpus_per_task}",
         f"#SBATCH --mem={mem}",
         f"#SBATCH --job-name={job_name}",
-        f"#SBATCH --output={job_name}_%j.log",
-        f"#SBATCH --error={job_name}_%j.err",
+        f"#SBATCH --output={tmp_dir}/{job_name}_%j.log",
+        f"#SBATCH --error={tmp_dir}/{job_name}_%j.err",
         "",
         "# Define paths",
         f"RUNTIME=\"{runtime}\"",
@@ -132,7 +135,7 @@ def write_sbatch_script(
         f"mkdir -p \"$OUTPUT_DIR\"",
         "",
         "# Run the processing script inside the sandbox",
-        f"bash -c \"python3 run_face_processing.py\""
+        f"bash -c \"python3 {python_path}\""
     ]
 
     script_content = "\n".join(lines)
@@ -152,11 +155,12 @@ def write_sbatch_script(
         return script_path
 
 
-def write_python_script(  
+def write_python_script(
     input_file: str,
     output_dir: str,
+    parameters: dict = None,
     python_path: str = 'tmp/run_facial_processing.py',
-    processor = None,
+    processor=None,
     runtime: str = 'bitbox:latest',
     ssh_client: paramiko.SSHClient = None,
     remote_path: str = None
@@ -165,14 +169,15 @@ def write_python_script(
     Generate a Python launcher script that:
       - imports ProcessorClass as FP
       - sets input_file and output_dir
-      - applies processor_kwargs
+      - applies parameters passed in `params`
       - instantiates and runs the processor
     If ssh_client and remote_path are provided, writes directly to remote via SFTP.
     Otherwise, writes locally to python_path.
     Returns the path to the generated script (local or remote).
     """
 
-    processor_class = processor.__class__.__name__ if processor else 'FaceProcessor3DI'
+    processor_class = processor.__name__ if processor else 'FaceProcessor3DI'
+    parameters = parameters or {}
 
     # build script lines
     lines = [
@@ -184,43 +189,29 @@ def write_python_script(
         "",
     ]
 
-    init = {
-        k: v
-        for k, v in processor.init_args.items()
-        if k not in {'self', 'server', '__class__', 'slurm'}
-    }
-    args   = init.pop('args', [])
-    extras = init.pop('kwargs', {})
-    extras.pop('slurm', None)
-
-    processor_kwargs = {
-        **{f"arg_{i}": arg for i, arg in enumerate(args)},
-        **extras,
-        **init,
-    }
-
-    if processor_kwargs:
-        for k, v in processor_kwargs.items():
-            lines.append(f"{k} = {repr(v)}")
+    # write parameter assignments
+    for key, value in parameters.items():
+        lines.append(f"{key} = {repr(value)}")
+    if parameters:
         lines.append("")
 
-    args_str = ", ".join(f"{k}={k}" for k in processor_kwargs)
-    if args_str:
-        full_args = f"{args_str}, runtime={repr(runtime)}"
-    else:
-        full_args = f"runtime={repr(runtime)}"
+    # build argument string for instantiation
+    arg_pairs = [f"{key}={key}" for key in parameters]
+    arg_pairs.append(f"runtime={repr(runtime)}")
+    args_str = ", ".join(arg_pairs)
 
     lines.extend([
         "# instantiate and run",
-        f"processor = FP({full_args})" if full_args else "processor = FP()",
+        f"processor = FP({args_str})",
         "processor.io(input_file=input_file, output_dir=output_dir)",
         "rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=True)",
     ])
     content = "\n".join(lines)
+
     # decide local vs remote write
     if ssh_client and remote_path:
         remote_path = os.path.expanduser(remote_path)
-        parent      = os.path.dirname(remote_path)
+        parent = os.path.dirname(remote_path)
         ssh_client.exec_command(f'mkdir -p {parent}')
         stage_content_to_remote(ssh_client, content, remote_path)
         return remote_path
@@ -229,38 +220,40 @@ def write_python_script(
         with open(python_path, 'w') as f:
             f.write(content)
         return python_path
-    
 
-def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runtime='bitbox:latest'):
+def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
     """
     Submit a job to Slurm using the provided processor and configuration.
     If input_file or output_dir are specified, set them on the processor.
     Returns the job ID.
     """
-    remote_root = slurm_config.get('remote_root') or slurm_config.get('remote_output_dir') 
-    base_remote = os.path.join(remote_root, os.getlogin()) # impute with the current user name
+    venv_path = slurm_config.get('venv_path') or slurm_config.get('remote_output_dir') 
+    base_remote = os.path.join(venv_path, os.getlogin()) # impute with the current user name
     remote_input_dir  = slurm_config.get('remote_input_dir') or os.path.join(base_remote, 'input')
     remote_output_dir = os.path.join(slurm_config.get('remote_output_dir'),output_dir) or os.path.join(base_remote, 'output')
     ssh_client=connect_slurm(slurm_config, verbose=True)
 
-    write_python_script(
-        input_file   = os.path.join(remote_input_dir, input_file),
-        output_dir   = remote_output_dir,
-        processor = processor, 
-        runtime = runtime,
-        ssh_client   = ssh_client,
-        remote_path  = os.path.join(base_remote, "run_face_processing.py")
+
+    python_script_path = write_python_script(
+                input_file   = os.path.join(remote_input_dir, input_file),
+                output_dir   = remote_output_dir,
+                processor = processor,
+                parameters = slurm_config.get('parameters', {}), 
+                runtime     = slurm_config.get('runtime', 'bitbox:latest'),
+                ssh_client   = ssh_client,
+                remote_path  = os.path.join(remote_output_dir, 'tmp', "run_face_processing.py")
     )
         
-    script_remote = write_sbatch_script(
+    slurm_script_path = write_sbatch_script(
                 slurm_config=slurm_config,
                 ssh_client= ssh_client,
-                runtime = runtime,
-                remote_path=os.path.join(base_remote, "run_bitbox_ssh.sh"),
-                output_dir=remote_output_dir
+                runtime = slurm_config.get('runtime', 'bitbox:latest'),
+                remote_path=os.path.join(remote_output_dir, 'tmp', "run_bitbox_ssh.sh"),
+                output_dir=remote_output_dir,
+                python_path=python_script_path
             )
     
-    stdin, stdout, stderr = ssh_client.exec_command(f"cd {base_remote} &&  source {remote_root}/env/bin/activate && sbatch {script_remote}")
+    stdin, stdout, stderr = ssh_client.exec_command(f"source {venv_path}/env/bin/activate && sbatch {slurm_script_path}")
     job_response = stdout.read().decode().strip()
     err = stderr.read().decode().strip()
 
@@ -273,36 +266,70 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None,runti
     ssh_client.close()
     return job_response.split()[-1] if job_response else None
 
+
 def slurm_status(job_id, slurm_config):
     """
-    Check a Slurm job’s state by ID.
-
+    Check a Slurm job’s state by ID and, if it’s running, pull its stats.
+    Prints:
+      User, State, RunTime, Partition, CPUs, Memory, GPUs
     Returns:
-      - the state string (e.g. “RUNNING”, “COMPLETED”)
-      - “NOT FOUND” if the job isn’t in the queue
-      - raises RuntimeError on SSH or Slurm errors
+      {
+        "job_id": str,
+        "state": str,      # e.g. "RUNNING", "COMPLETED", "UNKNOWN"
+        "stats": dict|None # full stats dict if RUNNING, else None
+      }
+    Raises RuntimeError on SSH or Slurm errors.
     """
     ssh = connect_slurm(slurm_config, verbose=True)
     try:
+        # 1) get the basic state
         cmd = f"squeue -h -j {job_id} -o %T"
         stdin, stdout, stderr = ssh.exec_command(cmd)
         exit_code = stdout.channel.recv_exit_status()
-
-        out = stdout.read().decode().strip()
-        err = stderr.read().decode().strip()
+        state = stdout.read().decode().strip()
 
         if exit_code != 0:
-            # squeue exits non-zero when the job ID doesn’t exist
-            result = "COMPLETED"
-        else:
-            result = out or "UNKNOWN"
+            state = "COMPLETED"
+        elif not state:
+            state = "UNKNOWN"
 
-        if err and exit_code == 0:
-            # sometimes warnings slip through
-            print("SLURM WARNING:", err)
+        # 2) if RUNNING, fetch detailed stats
+        stats = None
+        if state == "RUNNING":
+            stats_cmd = f"scontrol show job {job_id} -o"
+            _, stdout2, _ = ssh.exec_command(stats_cmd)
+            stdout2.channel.recv_exit_status()
+            raw = stdout2.read().decode().strip()
+            stats = {}
+            for pair in raw.split():
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    stats[k] = v
 
-        print(f"Job {job_id}: {result}")
+        # 3) extract AllocTRES fields
+        memory = ""
+        gpu    = ""
+        if stats and "AllocTRES" in stats:
+            tres_parts = stats["AllocTRES"].split(",")
+            tres = {kv.split("=",1)[0]: kv.split("=",1)[1] for kv in tres_parts if "=" in kv}
+            memory = tres.get("mem", "")
+            gpu    = tres.get("gres/gpu", "")
 
-        return result
+        # 4) print the essentials
+        user      = stats.get("UserId") if stats else ""
+        runtime   = stats.get("RunTime")  if stats else ""
+        partition = stats.get("Partition") if stats else ""
+        cpus      = stats.get("NumCPUs")   if stats else ""
+
+        print(f"User     : {user}")
+        print(f"State    : {state}")
+        print(f"RunTime  : {runtime}")
+        print(f"Partition: {partition}")
+        print(f"CPUs     : {cpus}")
+        print(f"Memory   : {memory}")
+        print(f"GPUs     : {gpu}")
+
+        return {"job_id": job_id, "state": state, "stats": stats}
+
     finally:
         ssh.close()

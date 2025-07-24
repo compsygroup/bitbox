@@ -27,7 +27,7 @@ class FaceProcessor3DI(FaceProcessor):
             # specific file extension for 3DI
             self.output_ext = '.3DI'
             
-            if not self.API and not self.slurm:
+            if not self.API:
                 self._set_runtime()
             
                 if self.execDIR is None:
@@ -220,7 +220,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         # specific file extension for 3DI-lite
         self.output_ext = '.3DIl'
     
-        if not self.API and not self.slurm:  
+        if not self.API:  
             self._set_runtime(name='3DI-lite', variable='BITBOX_3DI_LITE', executable='process_video.py', docker_path='/app/3DI_lite')
     
             if self.execDIR is None:
