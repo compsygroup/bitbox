@@ -82,7 +82,7 @@ The 3DI and 3DI-lite also provide functionality to estimate localized expression
 exp_local = processor.localized_expressions()
 ```
 
-The output, `exp_local`, stores coefficients for localized expressions. More details are provided [here](../affective-expressions/facial-basis.md).
+The output, `exp_local`, stores coefficients for localized expressions. More details are provided [here](../affective-expressions/localized-expression-units.md).
 
 Please follow these steps in the specified order. Each step relies on the output (files stored in `output`) from the previous step. Alternatively, you can run all steps at once.
 
