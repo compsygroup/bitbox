@@ -28,7 +28,7 @@ We plan to implement the following updates over the next year:
 * [ ] **Add support for OpenPose (body backend)**: We plan to add a new backend processor for analyzing body actions. OpenPose is the most widely used processor for body joint detection and tracking.
 * [ ] **Add suport for OpenFace (face backend)**: A new face processing backend will be implemented. OpenFace, a commonly used alternative to 3DI, will enable the estimation of Action Unit activations.
 * [ ] A**dd support for TalkNET (speech backend)**: We will implement a speech behavior processor, TalkNET, to determine who is speaking and when. This will also allow the study of turn-taking patterns.
-* [ ] **Add support for CPU version 3DI-Lite**: Current face-processing backends require GPUs, limiting their use on computers without one. Introducing a CPU version of 3DI-Lite will broaden the usability and adoption of Bitbox.
+* [ ] **Add support for CPU version of 3DI-Lite**: Current face-processing backends require GPUs, limiting their use on computers without one. Introducing a CPU version of 3DI-Lite will broaden the usability and adoption of Bitbox.
 * [ ] **Add visualization and reporting feature**: We plan to enhance Bitbox by incorporating visualization features to inspect generated results. Additionally, summary statistics will be introduced for inspection and reporting purposes.
 
 ### Community Developments
