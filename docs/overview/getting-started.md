@@ -40,21 +40,21 @@ output_dir = 'output'
 processor = FP(runtime='bitbox:latest')
 ```
 
-Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md).
+Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md#pointing-to-backend-processors).
 
 ```python
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
 ```
 
-3DI allows you to run individual steps separately, as shown below, in case you need only some of them.
+3DI and 3DI-lite allow you to run individual steps separately, as shown below, in case you need only some of them.
 
 ```python
 # detect faces
 rects = processor.detect_faces()
 ```
 
-This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](output-formats.md).
+This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](output-formats.md#standard-output-formats).
 
 ```python
 # detect landmarks
@@ -75,7 +75,7 @@ This step produces the main outcomes of 3DI:&#x20;
 3. Canonicalized 3D landmarks. The output, `land_can`, stores 3D x, y, z coordinates of the same 51 landmark points for each frame, corrected for pose and identity, thus capturing only expression-related variation.
 4. Deformation of the facial mesh caused by facial expressions. The output, `exp_global`, stores coefficients (magnitude) for 79 expression bases (defined by a PCA model of expressions) for each frame. Note that each expression basis is a global deformation of the facial mesh, thus difficult to interpret, unlike Action Units of FACS.
 
-The 3DI tool also provides functionality to estimate localized expression variations, creating interpretable facial expression coefficients similar to the Action Units of FACS.&#x20;
+The 3DI and 3DI-lite also provide functionality to estimate localized expression variations, creating interpretable facial expression coefficients similar to the Action Units of FACS.&#x20;
 
 ```python
 # compute localized expressions

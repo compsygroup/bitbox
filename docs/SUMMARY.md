@@ -19,7 +19,7 @@
   * [Facial Basis](affective-expressions/facial-basis.md)
   * [Symmetry](affective-expressions/symmetry.md)
   * [Expressivity](affective-expressions/expressivity.md)
-  * [Arousal / Valence](affective-expressions/arousal-valence.md)
+  * [Diversity](affective-expressions/diversity.md)
 * [Interpersonal Dynamics](interpersonal-dynamics/README.md)
   * [Imitation](interpersonal-dynamics/imitation.md)
   * [Coordination](interpersonal-dynamics/coordination.md)

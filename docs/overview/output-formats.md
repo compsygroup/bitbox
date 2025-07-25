@@ -54,6 +54,8 @@ Each file saved to disk will have an accompanying `.json` file, named identicall
 
 Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Psychomotor Behavior](../psychomotor-behavior/), [Affective Expressions](../affective-expressions/), and [Interpersonal Dynamics](../interpersonal-dynamics/) sections.
 
+By defualt, Bitbox returns a Python dictionary as the outcome of each processing step. This alllows users to manipulate them if they want. If you don't want the steps to return anything (no dictonaries), and only want to genaret output files of the backend processor, you can set the `return_output` parameter to `None`. if you want to get the path of generated files instead, you can also set it to `'file'`.
+
 #### Face Rectangles
 
 The dictionary containing the coordinates for the face rectangles is structured as follows.
