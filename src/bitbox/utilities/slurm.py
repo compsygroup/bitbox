@@ -229,6 +229,7 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
     """
     venv_path = slurm_config.get('venv_path') or slurm_config.get('remote_output_dir') 
     base_remote = os.path.join(venv_path, os.getlogin()) # impute with the current user name
+    input_base_name, _ = os.path.splitext(input_file)
     remote_input_dir  = slurm_config.get('remote_input_dir') or os.path.join(base_remote, 'input')
     remote_output_dir = os.path.join(slurm_config.get('remote_output_dir'),output_dir) or os.path.join(base_remote, 'output')
     ssh_client=connect_slurm(slurm_config, verbose=True)
@@ -241,14 +242,14 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
                 parameters = slurm_config.get('parameters', {}), 
                 runtime     = slurm_config.get('runtime', 'bitbox:latest'),
                 ssh_client   = ssh_client,
-                remote_path  = os.path.join(remote_output_dir, 'tmp', "run_face_processing.py")
+                remote_path  = os.path.join(remote_output_dir, 'tmp', "run_face_processing_"+input_base_name+ ".py")
     )
         
     slurm_script_path = write_sbatch_script(
                 slurm_config=slurm_config,
                 ssh_client= ssh_client,
                 runtime = slurm_config.get('runtime', 'bitbox:latest'),
-                remote_path=os.path.join(remote_output_dir, 'tmp', "run_bitbox_ssh.sh"),
+                remote_path=os.path.join(remote_output_dir, 'tmp', "run_bitbox_" +input_base_name+ ".sh"),
                 output_dir=remote_output_dir,
                 python_path=python_script_path
             )
@@ -267,7 +268,7 @@ def slurm_submit(processor, slurm_config, input_file=None, output_dir=None):
     return job_response.split()[-1] if job_response else None
 
 
-def slurm_status(job_id, slurm_config):
+def slurm_status(job_id, slurm_config,verbose=False):
     """
     Check a Slurm job’s state by ID and, if it’s running, pull its stats.
     Prints:
@@ -280,7 +281,7 @@ def slurm_status(job_id, slurm_config):
       }
     Raises RuntimeError on SSH or Slurm errors.
     """
-    ssh = connect_slurm(slurm_config, verbose=True)
+    ssh = connect_slurm(slurm_config, verbose=verbose)
     try:
         # 1) get the basic state
         cmd = f"squeue -h -j {job_id} -o %T"
