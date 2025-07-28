@@ -15,5 +15,5 @@ layout:
     visible: false
 ---
 
-# Arousal / Valence
+# Diversity
 

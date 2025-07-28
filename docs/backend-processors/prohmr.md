@@ -15,6 +15,6 @@ layout:
     visible: false
 ---
 
-# Speech Behavior
+# ProHMR
 
 Coming Soon

@@ -15,6 +15,6 @@ layout:
     visible: false
 ---
 
-# Speech Behavior
+# 3DI-Lite
 
-Coming Soon
+<h2 align="center">3DI-Lite</h2>
