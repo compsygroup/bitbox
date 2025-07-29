@@ -135,7 +135,11 @@ def write_sbatch_script(
         f"mkdir -p \"$OUTPUT_DIR\"",
         "",
         "# Run the processing script inside the sandbox",
-        f"bash -c \"python3 {python_path}\""
+        f"bash -c \"python3 {python_path}\"",
+        "",
+        "# Cleanup: Delete files in tmp older than 1 day",
+        f'find "{tmp_dir}" -type f -mtime +0 -exec rm -f {{}} \\;',
+        "# Done"
     ]
 
     script_content = "\n".join(lines)

@@ -12,7 +12,6 @@ from .reader3DI import read_expression, read_canonical_landmarks
 class FaceProcessor3DI(FaceProcessor):
     def __init__(self, *args, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, **kwargs):
         # Run the parent class init
-        self.init_args = dict(locals())
         super().__init__(*args, **kwargs)
 
         self.model_camera = camera_model
@@ -211,7 +210,6 @@ class FaceProcessor3DI(FaceProcessor):
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
     def __init__(self, *args, basis_model='0.0.1.F591-cd-K32d', **kwargs):
-        self.init_args = dict(locals())
         # Run the parent class init
         super().__init__(*args, **kwargs)
         self.basis_model = basis_model
