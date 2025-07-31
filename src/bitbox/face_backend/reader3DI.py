@@ -7,6 +7,7 @@ def read_rectangles(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'rectangle',
         'format': 'for each frame (rows) [x, y, w, h] values of the detected rectangles',
         'dimension': 2,
         'data': data
@@ -29,6 +30,7 @@ def read_landmarks(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'landmark',
         'format': 'for each frame (rows) [x, y] values of the detected landmarks',
         'schema': schema,
         'dimension': 2,
@@ -46,6 +48,7 @@ def read_pose(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'pose',
         'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
         'dimension': 3,
         'data': data
@@ -62,6 +65,7 @@ def read_pose_lite(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'pose',
         'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
         'dimension': 3,
         'data': data
@@ -102,6 +106,7 @@ def read_expression(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'expression',
         'format': format,
         'schema': schema,
         'dimension': 3,
@@ -125,6 +130,7 @@ def read_canonical_landmarks(file):
 
     dict = {
         'frame count': data.shape[0],
+        'type': 'landmark-can',
         'format': 'for each frame (rows) [x, y, z] values of the canonicalized landmarks',
         'schema': schema,
         'dimension': 3,
