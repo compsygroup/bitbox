@@ -1,5 +1,5 @@
 from bitbox.face_backend import FaceProcessor3DI as FP
-from bitbox.utilities.slurm import slurm_submit, slurm_status
+from bitbox.utilities.slurm import SlurmClient
 
 input_file = 'IS001_parent.mp4'
 output_dir = 'output'
@@ -14,9 +14,9 @@ slurm_config = {
     'parameters': {'fast': True, 'camera_model': 30}, # parameters for FaceProcessor3DI
 }
 
-# submits slurm job to server and return jobID
-jobID = slurm_submit(FP, slurm_config, input_file=input_file, output_dir=output_dir) 
 
-# check job status by ID
-slurm_status(jobID, slurm_config)  
+sc = SlurmClient(slurm_config)
+
+jobID = sc.slurm_submit(FP,input_file,output_dir) # submits slurm job to server and return jobID
+sc.slurm_status(jobID)  # check job status by ID
 
