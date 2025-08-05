@@ -21,7 +21,7 @@
   * [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
 * [Biomechanics](biomechanics/README.md)
   * [Kinematics](biomechanics/kinematics.md)
-  * [Temporal Dynamics](biomechanics/temporal-dynamics.md)
+  * [Relative Motion](biomechanics/relative-motion.md)
 * [Affective Expressions](affective-expressions/README.md)
   * [Localized Expression Units](affective-expressions/localized-expression-units.md)
   * [Symmetry](affective-expressions/symmetry.md)
