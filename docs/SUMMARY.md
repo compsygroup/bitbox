@@ -26,15 +26,16 @@
 * [Smoothness](biomechanics/smoothness.md)
 * [Relative Motion](biomechanics/relative-motion.md)
 
-***
+## Affective Expressions
 
-* [Affective Expressions](affective-expressions/README.md)
-  * [Localized Expression Units](affective-expressions/localized-expression-units.md)
-  * [Symmetry](affective-expressions/symmetry.md)
-  * [Expressivity](affective-expressions/expressivity.md)
-  * [Diversity](affective-expressions/arousal-valence.md)
-* [Social Dynamics](social-dynamics/README.md)
-  * [Imitation](social-dynamics/imitation.md)
-  * [Coordination](social-dynamics/coordination.md)
-  * [Social Gaze](social-dynamics/social-gaze.md)
-  * [Speech Behavior](social-dynamics/speech-behavior.md)
+* [Localized Expression Units](affective-expressions/localized-expression-units.md)
+* [Symmetry](affective-expressions/symmetry.md)
+* [Expressivity](affective-expressions/expressivity.md)
+* [Diversity](affective-expressions/arousal-valence.md)
+
+## Social Dynamics
+
+* [Imitation](social-dynamics/imitation.md)
+* [Coordination](social-dynamics/coordination.md)
+* [Social Gaze](social-dynamics/social-gaze.md)
+* [Speech Behavior](social-dynamics/speech-behavior.md)

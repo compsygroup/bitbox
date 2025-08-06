@@ -15,5 +15,6 @@ layout:
     visible: false
 ---
 
-# Facial Basis
+# Localized Expression Units
 
+Facial expressions are a key aspect of facial behavior, closely linked to social and emotional processes and influenced by mental health, mood, and personality. These expressions serve both emotional and communicative functions and can be either spontaneous or deliberate. Bitbox offers multiple methods to measure and analyze facial expressions effectively.

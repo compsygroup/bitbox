@@ -61,7 +61,7 @@ processor = FP(runtime='bitbox:latest', return_output=None)
 
 ### Output Formats
 
-Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Psychomotor Behavior](broken-reference), [Affective Expressions](../affective-expressions/), and [Interpersonal Dynamics](../social-dynamics/) sections.
+Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Psychomotor Behavior](broken-reference), [Affective Expressions](broken-reference), and [Interpersonal Dynamics](broken-reference) sections.
 
 #### Face Rectangles
 
