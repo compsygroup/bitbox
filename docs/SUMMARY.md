@@ -19,10 +19,15 @@
   * [Standalone Mode](running-bitbox/standalone-mode.md)
   * [Client-Server Mode](running-bitbox/client-server-mode.md)
   * [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
-* [Biomechanics](biomechanics/README.md)
-  * [Kinematics](biomechanics/kinematics.md)
-  * [Smoothness](biomechanics/smoothness.md)
-  * [Relative Motion](biomechanics/relative-motion.md)
+
+## Biomechanics
+
+* [Kinematics](biomechanics/kinematics.md)
+* [Smoothness](biomechanics/smoothness.md)
+* [Relative Motion](biomechanics/relative-motion.md)
+
+***
+
 * [Affective Expressions](affective-expressions/README.md)
   * [Localized Expression Units](affective-expressions/localized-expression-units.md)
   * [Symmetry](affective-expressions/symmetry.md)

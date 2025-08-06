@@ -35,7 +35,7 @@ You can compute these variables for face bounding boxes, head pose, facial landm
 
 ```python
 # run the processor
-rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all(normalize=True)
+rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all()
 
 from bitbox.biomechanics import motion_kinematics
 
@@ -49,14 +49,14 @@ mrange, path, speed, accelaration = motion_kinematics(pose)
 mrange, path, speed, accelaration = motion_kinematics(lands)
 ```
 
-When using face bounding boxes (rectangles), the center coordinates of the box is computed and used. With head pose, you can either use translation coordinates or rotation angles (yaw, pitch, roll).
+When using face bounding boxes (rectangles), the center coordinates of the box are computed and used. With head pose, you can either use translation coordinates or rotation angles (yaw, pitch, roll).
 
 ```python
-# use translation coordinates
+# using translation coordinates
 mrange, path, speed, accelaration = motion_kinematics(pose)
 
-# use rotation angles
+# using rotation angles
 mrange, path, speed, accelaration = motion_kinematics(pose, angular=True)
 ```
 
-When using landmarks, variables are computed for each landmark separately.
+When using landmarks, variables are calculated for each landmark separately.
