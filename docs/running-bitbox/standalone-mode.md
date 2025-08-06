@@ -21,7 +21,7 @@ layout:
 
 To run Bitbox on a single computer, install both the backend processors and our Python library on that computer. See the installation guide for further details. **A NVIDIA GPU must be present on that computer.**
 
-### **Pointing to Backend Processors**
+### **Setting up Backend Processors**
 
 Once the installation is complete, configure the Python library to connect with the backend processors. The simplest method is to utilize our Docker image and assign the image name to the `runtime` parameter.
 

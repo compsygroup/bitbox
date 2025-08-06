@@ -31,7 +31,7 @@ The 3DI processes a video through the following five steps:
 4. **3D Reconstruction**: Perform frame-by-frame 3D reconstruction using fixed identity parameters obtained from the previous step.
 5. **Temporal Smoothing**: Smooth pose and expression parameters over time for consistency.
 
-<figure><img src="../.gitbook/assets/3di (1).png" alt=""><figcaption></figcaption></figure>
+<figure><img src="../../.gitbook/assets/3di (1).png" alt=""><figcaption></figcaption></figure>
 
 ### Separation of Pose, Expression, and Identity
 

@@ -5,20 +5,22 @@
   * [Getting Started](overview/getting-started.md)
   * [Architecture](overview/architecture.md)
   * [Output Formats](overview/output-formats.md)
+  * [Backend Processors](overview/backend-processors/README.md)
+    * [3DI](overview/backend-processors/3di.md)
+    * [3DI-Lite](overview/backend-processors/3di-lite.md)
+    * [OpenFace](overview/backend-processors/openface.md)
+    * [OpenPose](overview/backend-processors/openpose.md)
+    * [ProHMR](overview/backend-processors/prohmr.md)
+    * [TalkNET](overview/backend-processors/talknet.md)
   * [Contributing](overview/contributing.md)
   * [Roadmap](overview/roadmap.md)
   * [About](overview/about.md)
-* [Backend Processors](backend-processors/README.md)
-  * [3DI](backend-processors/3di.md)
-  * [3DI-Lite](backend-processors/3di-lite.md)
-  * [OpenFace](backend-processors/openface.md)
-  * [OpenPose](backend-processors/openpose.md)
-  * [ProHMR](backend-processors/prohmr.md)
-  * [TalkNET](backend-processors/talknet.md)
-* [Running Bitbox](running-bitbox/README.md)
-  * [Standalone Mode](running-bitbox/standalone-mode.md)
-  * [Client-Server Mode](running-bitbox/client-server-mode.md)
-  * [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
+
+## Running Bitbox
+
+* [Standalone Mode](running-bitbox/standalone-mode.md)
+* [Client-Server Mode](running-bitbox/client-server-mode.md)
+* [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
 
 ## Biomechanics
 
