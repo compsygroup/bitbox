@@ -21,7 +21,7 @@ layout:
 
 Bitbox computes fundamental kinematic features of motion, including range of motion, total path length, average speed, and average acceleration.
 
-{% hint style="info" %}
+{% hint style="success" %}
 **Range of motion**: Euclidean distance between maximal and minimal coordinates of the object, quantifying the overall range of motion.
 
 **Total path length**: Cumulative Euclidean distance traveled by the object, summing frame-to-frame displacements for the entire video.
