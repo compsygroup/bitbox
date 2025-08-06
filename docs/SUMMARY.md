@@ -1,16 +1,18 @@
 # Table of contents
 
-* [Overview](README.md)
-  * [Installation](overview/installation.md)
-  * [Getting Started](overview/getting-started.md)
-  * [Architecture](overview/architecture.md)
-  * [Output Formats](overview/output-formats.md)
-  * [Backend Processors](overview/backend-processors/README.md)
-    * [3DI](overview/backend-processors/3di.md)
-    * [3DI-Lite](overview/backend-processors/3di-lite.md)
-  * [Contributing](overview/contributing.md)
-  * [Roadmap](overview/roadmap.md)
-  * [About](overview/about.md)
+## Overview
+
+* [Introduction](README.md)
+* [Installation](overview/installation.md)
+* [Getting Started](overview/getting-started.md)
+* [Architecture](overview/architecture.md)
+* [Output Formats](overview/output-formats.md)
+* [Backend Processors](overview/backend-processors/README.md)
+  * [3DI](overview/backend-processors/3di.md)
+  * [3DI-Lite](overview/backend-processors/3di-lite.md)
+* [Contributing](overview/contributing.md)
+* [Roadmap](overview/roadmap.md)
+* [About](overview/about.md)
 
 ## Running Bitbox
 
