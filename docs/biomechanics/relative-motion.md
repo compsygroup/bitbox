@@ -21,8 +21,8 @@ layout:
 
 Bitbox calculates displacement statistics relative to a reference frame. It measures how much an object moves with respect to its location at this reference frame, including metrics of minimum, average, standard deviation, and maximum displacement.
 
-{% hint style="success" %}
-This function can quantify, for example, how much the mouth corners move from their position in a neutral face.
+{% hint style="info" %}
+This function can quantify, for example, how much the mouth corners move relative to their position in a neutral face.
 {% endhint %}
 
 Similar to [kinematics](kinematics.md) and [smoothness](smoothness.md) measures, you can compute these stats for face bounding boxes, head pose, facial landmarks, or body joints (coming soon). When using landmarks, variables are calculated for each landmark separately.
