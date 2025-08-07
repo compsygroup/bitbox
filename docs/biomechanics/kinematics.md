@@ -31,7 +31,7 @@ Bitbox computes fundamental kinematic features of motion, including range of mot
 **Average acceleration**: Mean magnitude of the second-order velocity differences, providing the object’s average acceleration.
 {% endhint %}
 
-You can compute these variables for face bounding boxes, head pose, facial landmarks, or body joints (coming soon).
+You can compute these variables for face bounding boxes, head pose, facial landmarks, or body joints (coming soon). When using landmarks, variables are calculated for each landmark separately.
 
 ```python
 # run the processor
@@ -58,5 +58,3 @@ mrange, path, speed, accelaration = motion_kinematics(pose)
 # using rotation angles
 mrange, path, speed, accelaration = motion_kinematics(pose, angular=True)
 ```
-
-When using landmarks, variables are calculated for each landmark separately.
