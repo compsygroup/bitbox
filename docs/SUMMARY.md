@@ -28,7 +28,7 @@
 
 ## Affective Expressions
 
-* [Localized Expression Units](affective-expressions/localized-expression-units.md)
+* [Facial Expressions](affective-expressions/facial-expressions.md)
 * [Symmetry](affective-expressions/symmetry.md)
 * [Expressivity](affective-expressions/expressivity.md)
 * [Diversity](affective-expressions/arousal-valence.md)
