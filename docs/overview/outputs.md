@@ -15,9 +15,9 @@ layout:
     visible: false
 ---
 
-# Output Formats
+# Outputs
 
-<h2 align="center">Output Formats</h2>
+<h2 align="center">Outputs</h2>
 
 Each backend processor generates outputs in a specific format, usually written to the disk as a text file. Thus, original output formats exhibit significant variations across backends. Bitbox, therefore, includes wrapper functions that convert these outputs into a standard Python dictionary format.&#x20;
 
@@ -50,7 +50,7 @@ Each file saved to disk will have an accompanying `.json` file, named identicall
     "time": "2025-07-18 12:33:50"
 ```
 
-### Outputs
+### Outputs Types
 
 Bitbox returns Python dictionaries by default after each processing step, allowing users to easily manipulate the output. If you prefer that the steps return nothing, and only generate backend output files, set the `return_output` parameter to `None`. To receive paths of the generated files, set it to `'file'`.
 

@@ -6,7 +6,7 @@
 * [Installation](overview/installation.md)
 * [Getting Started](overview/getting-started.md)
 * [Architecture](overview/architecture.md)
-* [Output Formats](overview/output-formats.md)
+* [Outputs](overview/outputs.md)
 * [Backend Processors](overview/backend-processors/README.md)
   * [3DI](overview/backend-processors/3di.md)
   * [3DI-Lite](overview/backend-processors/3di-lite.md)
@@ -28,7 +28,7 @@
 
 ## Affective Expressions
 
-* [Facial Expressions](affective-expressions/facial-expressions.md)
+* [Facial Expressions](affective-expressions/localized-expression-units.md)
 * [Symmetry](affective-expressions/symmetry.md)
 * [Expressivity](affective-expressions/expressivity.md)
 * [Diversity](affective-expressions/arousal-valence.md)

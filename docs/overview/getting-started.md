@@ -54,7 +54,7 @@ processor.io(input_file=input_file, output_dir=output_dir)
 rects = processor.detect_faces()
 ```
 
-This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](output-formats.md#standard-output-formats).
+This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](outputs.md#standard-output-formats).
 
 ```python
 # detect landmarks
@@ -82,7 +82,7 @@ The 3DI and 3DI-lite also provide functionality to estimate localized expression
 exp_local = processor.localized_expressions()
 ```
 
-The output, `exp_local`, stores coefficients for localized expressions. More details are provided [here](../affective-expressions/facial-expressions.md).
+The output, `exp_local`, stores coefficients for localized expressions. More details are provided [here](../affective-expressions/localized-expression-units.md).
 
 Please follow these steps in the specified order. Each step relies on the output (files stored in `output`) from the previous step. Alternatively, you can run all steps at once.
 
