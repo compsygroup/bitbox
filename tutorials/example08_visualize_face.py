@@ -1,4 +1,4 @@
-from bitbox.face_backend import FaceProcessor3DIlite as FP
+from bitbox.face_backend import FaceProcessor3DI as FP
 import numpy as np
 from bitbox.utilities.visualization import plot
 

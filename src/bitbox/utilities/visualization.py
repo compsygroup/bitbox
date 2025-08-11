@@ -1,19 +1,8 @@
-"""
-Utilities for visualizing rectangles, 2D landmarks, canonicalized 3D landmarks,
-and pose with video frames using Plotly.
-
-Public functions:
-- plot(data, ...): dispatcher based on data['type'] in {'rectangle','landmark','pose','landmark-can'}
-
-Notes:
-- Keeps the public API stable, but removes redundancy and adds small
-  robustness improvements (sampling guards, file fallbacks, etc.).
-"""
 import os
 from typing import List, Optional, Sequence, Tuple
-
 import cv2
 import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 import json
@@ -23,7 +12,7 @@ from string import Template
 TARGET_SIZE: Tuple[int, int] = (240, 300)
 
 # -----------------------------------------------------------------------------
-# Common helpers
+# Common Helpers
 # -----------------------------------------------------------------------------
 
 def get_frame(video_path: str, frame_idx: int) -> np.ndarray:
@@ -118,18 +107,16 @@ def crop_and_scale(
         raise ValueError("Either (x, y, w, h) or (xs, ys) must be provided.")
 
 # -----------------------------------------------------------------------------
-# Plot dispatch
+# Plot Dispatch
 # -----------------------------------------------------------------------------
 
 def plot(
     data: dict,
     video_path: Optional[str] = None,
     output_dir: str = "output",
-    random_seed: int = 82,
+    random_seed: int = 42,
     num_frames: int = 5,
-    cushion_ratio: float = 0.35,
     overlay: Optional[dict] = None,
-    lands: Optional[dict] = None,
     land_can: Optional[dict] = None,
     rect: Optional[dict] = None,
 ):
@@ -140,10 +127,11 @@ def plot(
     - pose: plots top row images (cropped by rect) and bottom row 3D scatter of mean face under pose
     - landmark-can: plots 2D crop (from 2D landmarks) and 3D canonicalized landmarks
     """
+    cushion_ratio=0.35
     out_dir = os.path.join(output_dir, "plots")
     os.makedirs(out_dir, exist_ok=True)
-
     data_type = data.get("type", None)
+
     if data_type == "rectangle":
         return plot_rects(data, num_frames, video_path, out_dir, random_seed, cushion_ratio, overlay)
     elif data_type == "landmark":
@@ -160,7 +148,7 @@ def plot(
 
 def plot_rects(
     rects: dict,
-    num_frames: int,
+    num_frames: int, 
     video_path: Optional[str],
     out_dir: str,
     random_seed: int,
@@ -221,7 +209,7 @@ def plot_rects(
         ncols=ncols,
         blurred_crops=blurred_crops,
     )
-    fig.show(config={"responsive": True})
+    # fig.show(config={"responsive": True})
 
     # Persist an HTML snapshot for later viewing (centered with custom toolbar)
     html_path = os.path.join(out_dir, "rectangles.html")
@@ -278,9 +266,8 @@ def plot_landmarks(
         ncols=ncols,
         add_overlay_toggle=False,
     )
-    fig.show(config={"responsive": True})
+    # fig.show(config={"responsive": True})
 
-    # Persist an HTML snapshot (centered with custom toolbar)
     html_path = os.path.join(out_dir, "landmarks.html")
     try:
         write_centered_html(fig, html_path, export_filename="landmarks")
@@ -291,6 +278,74 @@ def plot_landmarks(
 # -----------------------------------------------------------------------------
 # Pose plots (3D scatter per sampled frame) with top-row images
 # -----------------------------------------------------------------------------
+
+
+def _find_col(df: pd.DataFrame, candidates):
+    """Case-insensitive column resolver; candidates can be a str or list/tuple of names."""
+    if isinstance(candidates, str):
+        candidates = [candidates]
+    lower_map = {c.lower(): c for c in df.columns}
+    for name in candidates:
+        hit = lower_map.get(str(name).lower())
+        if hit is not None:
+            return hit
+    return None
+
+
+def select_diverse_frames_maxmin(
+    pose_df: pd.DataFrame,
+    k: int,
+    x_col_candidates=("Rx", "rx", "pitch"),
+    y_col_candidates=("Ry", "ry", "yaw"),
+    prefer_extremes=True,
+    random_fallback=False,
+) -> np.ndarray:
+    """
+    Greedy farthest-point sampling on (x,y) to pick k diverse rows from pose_df.
+    Returns sorted row indices (frame numbers).
+    """
+    xcol = _find_col(pose_df, x_col_candidates)
+    ycol = _find_col(pose_df, y_col_candidates)
+    if xcol is None or ycol is None:
+        raise KeyError(
+            f"Could not find angle columns among {x_col_candidates} and {y_col_candidates}. "
+            f"Have: {list(pose_df.columns)}"
+        )
+
+    xy = pose_df[[xcol, ycol]].to_numpy(dtype=float)
+    n = xy.shape[0]
+    if n == 0:
+        return np.array([], dtype=int)
+    if k >= n:
+        return np.arange(n, dtype=int)
+
+    # z-score so pitch and yaw have equal weight
+    mu = xy.mean(axis=0, keepdims=True)
+    sd = xy.std(axis=0, keepdims=True)
+    sd[sd == 0] = 1.0
+    z = (xy - mu) / sd
+
+    # seed
+    r2 = (z ** 2).sum(axis=1)
+    seed = int(np.argmax(r2) if prefer_extremes else np.argmin(r2))
+
+    selected = [seed]
+    dists = np.linalg.norm(z - z[seed], axis=1)
+
+    # greedy add
+    for _ in range(1, k):
+        nxt = int(np.argmax(dists))
+        if dists[nxt] == 0 and random_fallback:
+            # degenerate duplicates case
+            unselected = np.setdiff1d(np.arange(n), np.array(selected))
+            if len(unselected) == 0:
+                break
+            nxt = int(np.random.choice(unselected))
+        selected.append(nxt)
+        dists = np.minimum(dists, np.linalg.norm(z - z[nxt], axis=1))
+
+    return np.array(sorted(selected), dtype=int)
+
 
 def euler_to_rotmat(rx: float, ry: float, rz: float) -> np.ndarray:
     Rx = np.array([[1, 0, 0], [0, np.cos(rx), -np.sin(rx)], [0, np.sin(rx), np.cos(rx)]])
@@ -306,13 +361,14 @@ def plot_pose(
     video_path: Optional[str],
     num_frames: int = 5,
     output_dir: str = "output/plots",
-    random_seed: int = 82,
     target_size: Tuple[int, int] = (300, 300),
 ) -> str:
+    """
+    NOTE: expects your existing `get_frame(...)` and `write_centered_html(...)` to be available.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     pose_df = pose_dict["data"]
-
     mean_face = land_can_dict["data"].iloc[0].values.reshape(-1, 3)
 
     T = pose_df.shape[0]
@@ -331,66 +387,60 @@ def plot_pose(
             return tuple(float(s[k]) for k in lower)
         if all(k in idx for k in upper):
             return tuple(float(s[k]) for k in upper)
-        # positional fallback
         vals = getattr(s, "values", s)
         if len(vals) >= 6:
             return tuple(float(v) for v in vals[:6])
-        raise KeyError("pose_df must contain pose columns Tx,Ty,Tz,Rx,Ry,Rz (any case) or have first 6 columns as pose values")
+        raise KeyError(
+            "pose_df must contain pose columns Tx,Ty,Tz,Rx,Ry,Rz (any case) or have first 6 columns as pose values"
+        )
 
-    np.random.seed(random_seed)
-    # Sample evenly spaced frames (avoid duplicates for very small T)
+    # select frames by pose diversity on (Rx, Ry) instead of random/linspace
     k = min(num_frames, T)
-    frame_idxs = np.unique(np.linspace(0, T - 1, k, dtype=int))
+    frame_idxs = select_diverse_frames_maxmin(
+        pose_df,
+        k=k,
+        x_col_candidates=("Rx", "rx", "pitch"),  # change to ("Tx","tx") if you want translations
+        y_col_candidates=("Ry", "ry", "yaw"),
+        prefer_extremes=True
+    )
     ncols = len(frame_idxs)
     nrows = 2
 
-    # Precompute column titles (Frame + Euler, to be placed under the 3D pose row)
-    column_titles = [
-        (
-            lambda _s: (
-                lambda _vals: f"Frame {idx}<br>Pitch: {_vals[3]:.2f}, Yaw: {_vals[4]:.2f}, Roll: {_vals[5]:.2f}"
-            )(_pose_tuple_from_series(_s))
-        )(pose_df.iloc[idx])
-        for idx in frame_idxs
-    ]
+    # Column titles under 3D plots
+    column_titles = []
+    for idx in frame_idxs:
+        _tx, _ty, _tz, _rx, _ry, _rz = _pose_tuple_from_series(pose_df.iloc[idx])
+        column_titles.append(f"Frame {idx}<br>Pitch: {_rx:.2f}, Yaw: {_ry:.2f}, Roll: {_rz:.2f}")
 
-    # Compute a fixed, deterministic canvas size so export is uniform
-    # Slight margins and small gaps between subplots
+    # Fixed figure sizing
     cell_w, cell_h = target_size
-    h_gap_px = 10  # horizontal gap between columns (visual)
-    v_gap_px = 20  # vertical gap between image row and 3D row
+    h_gap_px = 10
+    v_gap_px = 20
     left_right_margin = 30
     top_bottom_margin = 80
-    fig_w = int(ncols * cell_w + (ncols - 1) * (h_gap_px) + 2 * left_right_margin)
+    fig_w = int(ncols * cell_w + (ncols - 1) * h_gap_px + 2 * left_right_margin)
     fig_h = int(2 * cell_h + v_gap_px + 2 * top_bottom_margin)
 
     fig = make_subplots(
         rows=nrows,
         cols=ncols,
         specs=[[{"type": "image"}] * ncols, [{"type": "scene"}] * ncols],
-        # Removed subplot_titles so we can place labels under the pose row instead of above the images
-        vertical_spacing=0.03,  # bring rows closer
-        horizontal_spacing=0.01,  # bring columns closer
-        row_heights=[0.5, 0.5],  # equal row heights
+        vertical_spacing=0.03,
+        horizontal_spacing=0.01,
+        row_heights=[0.5, 0.5],
     )
 
-    # Top row: Images (cropped by rect) — force identical pixel size via resize
+    # Top row: images
     for i, idx in enumerate(frame_idxs):
         if video_path is None:
             continue
         img = get_frame(video_path, idx)
 
-        # Prefer rectangles for cropping if provided
+        # crop using rects when available
         if rect_dict is not None and "data" in rect_dict and idx < len(rect_dict["data"]):
             rect_row = rect_dict["data"].iloc[idx]
-            # Be robust to column order
             try:
-                x, y, w, h = (
-                    int(rect_row["x"]),
-                    int(rect_row["y"]),
-                    int(rect_row["w"]),
-                    int(rect_row["h"]),
-                )
+                x, y, w, h = (int(rect_row["x"]), int(rect_row["y"]), int(rect_row["w"]), int(rect_row["h"]))
             except Exception:
                 x, y, w, h = map(int, rect_row.values[:4])
 
@@ -411,15 +461,13 @@ def plot_pose(
         fig.update_xaxes(showticklabels=False, row=1, col=i + 1, visible=False)
         fig.update_yaxes(showticklabels=False, row=1, col=i + 1, visible=False)
 
-    # Bottom row: 3D faces — use a uniform cube aspect and camera for consistency
-    camera = dict(eye=dict(x=0, y=0, z=2.5), up=dict(x=0, y=1, z=0))
+    # Bottom row: 3D faces
+    camera = dict(eye=dict(x=0, y=0, z=2), up=dict(x=0, y=1, z=0))  # Adjusted zoom level
     for i, frame_idx in enumerate(frame_idxs):
         tx, ty, tz, rx, ry, rz = _pose_tuple_from_series(pose_df.iloc[frame_idx])
         R = euler_to_rotmat(rx, ry, rz)
         face_xyz = (R @ mean_face.T).T + np.array([tx, ty, tz])
-        # Optional axis flip for orientation consistency
-        # face_xyz[:, 0] 
-        face_xyz[:, 2] *= -1
+        face_xyz[:, 2] *= -1  # optional flip for orientation
 
         fig.add_trace(
             go.Scatter3d(
@@ -427,7 +475,7 @@ def plot_pose(
                 y=face_xyz[:, 1],
                 z=face_xyz[:, 2],
                 mode="markers",
-                marker=dict(size=2, color="blue"),
+                marker=dict(color='blue', size=4), 
                 name=f"Frame {frame_idx}",
             ),
             row=2,
@@ -435,33 +483,27 @@ def plot_pose(
         )
 
     fig.update_layout(
-        autosize=False,  # fixed size for consistent export
+        autosize=False,
         width=fig_w,
         height=fig_h,
         showlegend=False,
-        title={
-            "text": "Video Frame (top) and 3D Pose (bottom) for Each Sampled Frame",
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        margin=dict(t=70, l=20, r=20, b=80),  # add bottom margin for labels
+        title={"text": "Video Frame (top) and 3D Pose (bottom) for Each Selected Frame", "x": 0.5, "xanchor": "center"},
+        margin=dict(t=70, l=20, r=20, b=80),
     )
 
-    # Apply the same camera to all scenes and hide axes; lock aspect for uniform size
+    # same camera + aspect for all scenes
     for i in range(1, ncols + 1):
         scene_id = f"scene{i}" if i > 1 else "scene"
-        fig.layout[scene_id].camera = camera
+        fig.layout[scene_id].camera = camera  # Apply zoomed camera settings
         fig.layout[scene_id].aspectmode = "data"
 
-    # Add the per-column titles under the 3D pose row using the scene domains
+    # Labels under the 3D row
     try:
         for i in range(1, ncols + 1):
             scene_id = f"scene{i}" if i > 1 else "scene"
             dom = fig.layout[scene_id].domain
-            # center of the column in paper coords
             xmid = (dom.x[0] + dom.x[1]) / 2.0
-            # just below the scene's bottom
-            ybelow = dom.y[0] - 0.06
+            ybelow = dom.y[0] - 0.09  # Adjusted to add more space above the text
             fig.add_annotation(
                 text=column_titles[i - 1],
                 x=xmid,
@@ -471,30 +513,23 @@ def plot_pose(
                 showarrow=False,
                 align="center",
                 xanchor="center",
-                yanchor="top",
+                yanchor="top",  # Ensures the text is positioned above
                 font=dict(size=12),
             )
-        # ensure enough space if small margins
-        fig.update_layout(margin=dict(b=max(fig.layout.margin.b, 100)))
+        fig.update_layout(margin=dict(b=max(fig.layout.margin.b, 120)))  # Adjusted bottom margin
     except Exception:
         pass
 
-    # Store pose column titles in layout meta for downstream export (pose-only)
+    # Store pose titles + raw eulers in meta
     try:
         existing_meta = fig.layout.meta if isinstance(fig.layout.meta, dict) else {}
         meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
         meta["pose_column_titles"] = column_titles
-        # Also store numeric Euler angles for robust parsing during pose-only export
         try:
             pose_eulers = []
             for idx in frame_idxs:
                 _tx, _ty, _tz, _rx, _ry, _rz = _pose_tuple_from_series(pose_df.iloc[idx])
-                pose_eulers.append({
-                    "frame_idx": int(idx),
-                    "pitch": float(_rx),
-                    "yaw": float(_ry),
-                    "roll": float(_rz),
-                })
+                pose_eulers.append({"frame_idx": int(idx), "pitch": float(_rx), "yaw": float(_ry), "roll": float(_rz)})
             meta["pose_eulers"] = pose_eulers
         except Exception:
             pass
@@ -503,9 +538,8 @@ def plot_pose(
         pass
 
     out_file = os.path.join(output_dir, "pose_and_video_subplots.html")
-    # Centered HTML with toolbar (export button); fixed sizing ensures even export
     write_centered_html(fig, out_file, export_filename="pose_and_video_subplots", add_pose_only_export=True)
-    fig.show(config={"responsive": True})
+    # fig.show(config={"responsive": True})
     return out_file
 
 
@@ -527,17 +561,17 @@ def make_centered_subplot_with_overlay(
     ncols = len(crops)
     nrows = (num + ncols - 1) // ncols
 
-    font_family = "Times New Roman"
+    font_family = "Roboto, Helvetica, Arial, sans-serif"
     title_map = {"rect": "Face Rectangles", "landmark": "Face Landmarks"}
     if main_title is None:
         main_title = title_map.get(main_type, "Plot")
 
     # Compute a compact figure size so frames sit close together (small gaps)
     cell_w, cell_h = TARGET_SIZE  # pixel size of each crop cell
-    h_gap_px = 10                 # horizontal gap between cells in pixels
+    h_gap_px = 15                # horizontal gap between cells in pixels
     v_gap_px = 18                 # vertical gap between rows in pixels
     lr_margin = 20
-    t_margin = 70
+    t_margin = 100
     b_margin = 30
     fig_w = int(ncols * cell_w + max(0, ncols - 1) * h_gap_px + 2 * lr_margin)
     fig_h = int(nrows * cell_h + max(0, nrows - 1) * v_gap_px + t_margin + b_margin)
@@ -552,8 +586,8 @@ def make_centered_subplot_with_overlay(
     )
 
     overlay_trace_indices: List[int] = []
-    privacy_pairs: List[Tuple[int, int]] = []  # (orig_image_trace_idx, blurred_image_trace_idx)
-    image_trace_indices: List[int] = []  # track all image traces to enable remove face
+    privacy_pairs: List[Tuple[int, int]] =[] # (orig_image_trace_idx, blurred_image_trace_idx)
+    image_trace_indices: List[int]= [] # track all image traces to enable remove face
 
     for idx, crop in enumerate(crops):
         row = idx // ncols + 1
@@ -742,12 +776,12 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
   <title>$export_filename_safe</title>
   <style>
     body {
-      margin: 0;
-      background: #ffffff;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+    margin: 0;
+    background: #ffffff;
+    font-family: 'Roboto', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     }
     .toolbar {
       margin: 12px 0 18px; /* moved below figure: add top margin */
