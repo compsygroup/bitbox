@@ -28,7 +28,7 @@ data = np.array(list(exp_loc['data'].values())).astype('float')
 peaks = peak_detection(data[:,32], num_scales=6, fps=30, smooth=True, visualize=True)
 
 # calculate intra-person coordination
-corr_mean, corr_lag, corr_std = intra_person_coordination(exp_loc, width=0.5, fps=30)
+corr_mean, corr_std, corr_lag = intra_person_coordination(exp_loc, width=0.5, fps=30)
 
 # calculate expressivity
 expressivity_stats = expressivity(data, axis=0, use_negatives=0, num_scales=6, robust=True, fps=30)
