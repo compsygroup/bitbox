@@ -1,34 +1,41 @@
 # Table of contents
 
-* [Overview](README.md)
-  * [Installation](overview/installation.md)
-  * [Getting Started](overview/getting-started.md)
-  * [Architecture](overview/architecture.md)
-  * [Output Formats](overview/output-formats.md)
-  * [Contributing](overview/contributing.md)
-  * [Roadmap](overview/roadmap.md)
-  * [About](overview/about.md)
-* [Backend Processors](backend-processors/README.md)
-  * [3DI](backend-processors/3di.md)
-  * [3DI-Lite](backend-processors/3di-lite.md)
-  * [OpenFace](backend-processors/openface.md)
-  * [OpenPose](backend-processors/openpose.md)
-  * [ProHMR](backend-processors/prohmr.md)
-  * [TalkNET](backend-processors/talknet.md)
-* [Running Bitbox](running-bitbox/README.md)
-  * [Standalone Mode](running-bitbox/standalone-mode.md)
-  * [Client-Server Mode](running-bitbox/client-server-mode.md)
-  * [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
-* [Psychomotor Behavior](psychomotor-behavior/README.md)
-  * [Kinematics](psychomotor-behavior/kinematics.md)
-  * [Temporal Dynamics](psychomotor-behavior/temporal-dynamics.md)
-* [Affective Expressions](affective-expressions/README.md)
-  * [Localized Expression Units](affective-expressions/localized-expression-units.md)
-  * [Symmetry](affective-expressions/symmetry.md)
-  * [Expressivity](affective-expressions/expressivity.md)
-  * [Diversity](affective-expressions/arousal-valence.md)
-* [Interpersonal Dynamics](interpersonal-dynamics/README.md)
-  * [Imitation](interpersonal-dynamics/imitation.md)
-  * [Coordination](interpersonal-dynamics/coordination.md)
-  * [Social Gaze](interpersonal-dynamics/social-gaze.md)
-  * [Speech Behavior](interpersonal-dynamics/speech-behavior.md)
+## Overview
+
+* [Introduction](README.md)
+* [Installation](overview/installation.md)
+* [Getting Started](overview/getting-started.md)
+* [Architecture](overview/architecture.md)
+* [Outputs](overview/outputs.md)
+* [Backend Processors](overview/backend-processors/README.md)
+  * [3DI](overview/backend-processors/3di.md)
+  * [3DI-Lite](overview/backend-processors/3di-lite.md)
+* [Contributing](overview/contributing.md)
+* [Roadmap](overview/roadmap.md)
+* [About](overview/about.md)
+
+## Running Bitbox
+
+* [Standalone Mode](running-bitbox/standalone-mode.md)
+* [Client-Server Mode](running-bitbox/client-server-mode.md)
+* [HPC Jobs with Slurm](running-bitbox/hpc-jobs-with-slurm.md)
+
+## Biomechanics
+
+* [Kinematics](biomechanics/kinematics.md)
+* [Smoothness](biomechanics/smoothness.md)
+* [Relative Motion](biomechanics/relative-motion.md)
+
+## Affective Expressions
+
+* [Facial Expressions](affective-expressions/localized-expression-units.md)
+* [Symmetry](affective-expressions/symmetry.md)
+* [Expressivity](affective-expressions/expressivity.md)
+* [Diversity](affective-expressions/arousal-valence.md)
+
+## Social Dynamics
+
+* [Imitation](social-dynamics/imitation.md)
+* [Coordination](social-dynamics/coordination.md)
+* [Social Gaze](social-dynamics/social-gaze.md)
+* [Speech Behavior](social-dynamics/speech-behavior.md)

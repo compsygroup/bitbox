@@ -40,7 +40,7 @@ output_dir = 'output'
 processor = FP(runtime='bitbox:latest')
 ```
 
-Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md#pointing-to-backend-processors).
+Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md#setting-up-backend-processors).
 
 ```python
 # set input and output
@@ -54,7 +54,7 @@ processor.io(input_file=input_file, output_dir=output_dir)
 rects = processor.detect_faces()
 ```
 
-This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](output-formats.md#standard-output-formats).
+This step detects the location of the face in each video frame as a rectangle. See details on output formats [here](outputs.md#standard-output-formats).
 
 ```python
 # detect landmarks

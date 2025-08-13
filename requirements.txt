@@ -8,3 +8,7 @@ matplotlib
 pandas
 requests
 paramiko
+plotly
+opencv-python
+pillow
+kaleido
