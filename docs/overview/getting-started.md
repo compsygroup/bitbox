@@ -40,7 +40,7 @@ output_dir = 'output'
 processor = FP(runtime='bitbox:latest')
 ```
 
-Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md#pointing-to-backend-processors).
+Set `runtime` to the Docker image name. If 3DI is installed natively, set `runtime` to the path where the 3DI executables are located. To avoid setting `runtime` every time you write your code, you can set the system variable `BITBOX_DOCKER`. See more details [here](../running-bitbox/standalone-mode.md#setting-up-backend-processors).
 
 ```python
 # set input and output
