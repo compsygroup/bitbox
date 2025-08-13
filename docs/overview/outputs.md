@@ -61,7 +61,7 @@ processor = FP(runtime='bitbox:latest', return_output=None)
 
 ### Output Formats
 
-Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Psychomotor Behavior](broken-reference), [Affective Expressions](broken-reference), and [Interpersonal Dynamics](broken-reference) sections.
+Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Biomechanics](broken-reference), [Affective Expressions](broken-reference), and [Social Dynamics](broken-reference) sections.
 
 #### Face Rectangles
 
@@ -69,6 +69,7 @@ The dictionary containing the coordinates for the face rectangles is structured 
 
 ```python
 frame count: int # number of frames in the processed video file
+type: str # string specifying the type of the data (rectangle)
 format: str # string specifying what is included in the 'data' variable
 dimension: int # dimensionality of the data (2D)
 data: DataFrame # actual data as a Pandas dataframe, including rectangle coordinates for each frame
@@ -80,6 +81,7 @@ print(rects)
 
 ```python
 {'frame count': 288,
+ 'type': 'rectangle',
  'format': 'for each frame (rows) [x, y, w, h] values of the detected rectangles',
  'dimension': 2,
  'data': x      y      w      h
@@ -104,6 +106,7 @@ The dictionary containing head pose is structured as follows.
 
 ```python
 frame count: int # number of frames in the processed video file
+type: str # string specifying the type of the data (pose)
 format: str # string specifying what is included in the 'data' variable
 dimension: int # dimensionality of the data (3D)
 data: DataFrame # actual data as a Pandas dataframe, including pose information for each frame
@@ -115,6 +118,7 @@ print(pose)
 
 ```python
 {'frame count': 287,
+ 'type': 'pose',
  'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
  'dimension': 3,
  'data':  Tx         Ty           Tz        Rx        Ry        Rz
@@ -145,6 +149,7 @@ The dictionary containing the coordinates for the facial landmarks is structured
 
 ```python
 frame count: int # number of frames in the processed video file
+type: str # string specifying the type of the data (landmark)
 format: str # string specifying what is included in the 'data' variable
 schema: str # schema used to specify landmarks (ibug, 51 landmarks)
 dimension: int # dimensionality of the data (2D)
@@ -157,6 +162,7 @@ print(lands)
 
 ```python
 {'frame count': 288,
+ 'type': 'landmark',
  'format': 'for each frame (rows) [x, y] values of the detected landmarks',
  'schema': 'ibug51',
  'dimension': 2,
@@ -186,6 +192,7 @@ Below is an illustration showcasing the 51 landmarks from the iBUG schema includ
 
 ```python
 frame count: int # number of frames in the processed video file
+type: str # string specifying the type of the data (landmark-can)
 format: str # string specifying what is included in the 'data' variable
 schema: str # schema used to specify landmarks (ibug, 51 landmarks)
 dimension: int # dimensionality of the data (3D)
@@ -198,6 +205,7 @@ print(lands_can)
 
 ```python
 {'frame count': 287,
+ 'type': 'landmark-can',
  'format': 'for each frame (rows) [x, y, z] values of the canonicalized landmarks',
  'schema': 'ibug51',
  'dimension': 3,
@@ -227,6 +235,7 @@ The dictionary containing facial expressions is structured as follows.
 
 ```python
 frame count: int # number of frames in the processed video file
+type: str # string specifying the type of the data (expression)
 format: str # string specifying what is included in the 'data' variable
 schema: str # schema used to specify expressions
 dimension: int # dimensionality of the data (3D)
@@ -239,6 +248,7 @@ print(pose)
 
 ```python
 {'frame count': 287,
+ 'type': 'expression',
  'format': 'for each frame (rows) [GE0, GE1, ..., GE78] values corresponding to global expression coefficients',
  'schema': '3DI-G79',
  'dimension': 3,

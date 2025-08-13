@@ -1,4 +1,4 @@
-from .utilities import get_data_values
+from .utilities import get_data_values, check_data_type
 from .signal_processing import peak_detection, outlier_detectionIQR, log_transform
 from .utilities import landmark_to_feature_mapper
 import numpy as np
@@ -6,6 +6,10 @@ import pandas as pd
 
 # Calculate asymmetry scores using mirror error approach
 def asymmetry(landmarks, axis=0):
+    # check data type
+    if not check_data_type(landmarks, ['landmark', 'landmark-can']):
+        raise ValueError("Only 'landmark' data can be used for asymmetry calculation. Make sure to use the correct data type.")
+    
     # read actual values
     data = get_data_values(landmarks)
     
@@ -66,6 +70,10 @@ def asymmetry(landmarks, axis=0):
 
 # use_negatives: whether to use negative peaks, 0: only positive peaks, 1: only negative peaks, 2: both
 def expressivity(activations, axis=0, use_negatives=0, num_scales=6, robust=True, fps=30):
+    # check data type
+    if not check_data_type(activations, 'expression'):
+        raise ValueError("Only 'expression' data can be used for expressivity calculation. Make sure to use the correct data type.")
+        
     # make sure data is in the right format
     data = get_data_values(activations)
     
@@ -128,6 +136,10 @@ def expressivity(activations, axis=0, use_negatives=0, num_scales=6, robust=True
 
 
 def diversity(activations, axis=0, use_negatives=0, num_scales=6, robust=True, fps=30):
+    # check data type
+    if not check_data_type(activations, 'expression'):
+        raise ValueError("Only 'expression' data can be used for diversity calculation. Make sure to use the correct data type.")
+        
     # make sure data is in the right format
     data = get_data_values(activations)
     

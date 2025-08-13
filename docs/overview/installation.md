@@ -50,9 +50,9 @@ Similarly, 3DI-lite can be installed from ... (COMING SOON)
 {% endtab %}
 {% endtabs %}
 
-### Installing Bitbox
+### Installing Python Library
 
-Once you installed the backends, you can install the stable version of the Bitbox using `pip` or the latest version directly from GitHub.
+Once you installed the backends, you can install the stable version of the Bitbox Python library using `pip` or the latest version directly from GitHub.
 
 {% tabs %}
 {% tab title="pip" %}

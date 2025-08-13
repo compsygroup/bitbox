@@ -5,6 +5,10 @@ import numpy as np
 
 
 def intra_person_coordination(data, axis=0, width=0.5, lag=None, step=None, fps=30):
+    # check data type
+    if not check_data_type(landmarks, ['expression', 'pose']):
+        raise ValueError("Only 'expression' or 'pose' data can be used for coordination calculation. Make sure to use the correct data type.")
+        
     # make sure data is in the right format
     data = get_data_values(data)
     
@@ -29,10 +33,14 @@ def intra_person_coordination(data, axis=0, width=0.5, lag=None, step=None, fps=
         corr_std[i,j] = corrs[:,idx].std()
         corr_lag[i,j] = lags[:,idx].mean()
             
-    return corr_mean, corr_lag, corr_std
+    return corr_mean, corr_std, corr_lag
 
 
 def intra_person_coordination_2S(data, axis=0, width=0.5, lag=None, step=None, fps=30, ordinal=False):
+    # check data type
+    if not check_data_type(landmarks, ['expression', 'pose']):
+        raise ValueError("Only 'expression' or 'pose' data can be used for coordination calculation. Make sure to use the correct data type.")
+        
     # make sure data is in the right format
     data = get_data_values(data)
     
