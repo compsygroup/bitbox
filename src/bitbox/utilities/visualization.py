@@ -225,7 +225,7 @@ def visualize_and_export(
 
     pose_df = _safe_df(pose)
 
-    # NEW: accept landmark-only input (no rectangles)
+    #  accept landmark-only input (no rectangles)
     if (df is None or len(df) == 0) and (overlay_df is None or len(overlay_df) == 0):
         raise ValueError("No rectangles or landmarks found. Provide rectangles via `rects`/`overlay` or landmarks via `overlay`/`rects`.")
 
@@ -396,7 +396,7 @@ def visualize_and_export_can_land(
 
     pose_df = _safe_df(pose)
 
-    # NEW: resolve pose angle columns (for labels under land_can when pose is provided)
+    #  resolve pose angle columns (for labels under land_can when pose is provided)
     rx_col = ry_col = rz_col = None
     if pose_df is not None and len(pose_df) > 0:
         rx_col = _find_col(pose_df, ("Rx", "rx", "pitch"))
@@ -406,7 +406,7 @@ def visualize_and_export_can_land(
     # Resolve overlay variants: dict with type, or a list containing both
     overlay_land = None
     overlay_rect = None
-    blur_default = False  # NEW: default blur state, can be enabled by overlay
+    blur_default = False  #  default blur state, can be enabled by overlay
 
     if isinstance(overlay, list):
         for value in overlay:
@@ -431,7 +431,7 @@ def visualize_and_export_can_land(
 
     overlay_land_df = _safe_df(overlay_land)
     overlay_rect_df = _safe_df(overlay_rect)
-    overlay_present = (overlay_land_df is not None) or (overlay_rect_df is not None)  # NEW
+    overlay_present = (overlay_land_df is not None) or (overlay_rect_df is not None)  # 
 
     # Select frames by pose diversity if possible, else evenly across canonical rows
     selected_fids: List[int] = []
@@ -484,7 +484,7 @@ def visualize_and_export_can_land(
     overlay_trace_indices: List[int] = []
     rect_shape_indices: List[int] = []
     image_trace_indices: List[int] = []
-    privacy_pairs: List[Tuple[int, int]] = []  # NEW: for blur toggle
+    privacy_pairs: List[Tuple[int, int]] = []  #  for blur toggle
 
     cushion_ratio = 0.35
 
@@ -643,7 +643,7 @@ def visualize_and_export_can_land(
 
     # Bottom row: 3D canonicalized landmarks
     column_titles: List[str] = []
-    pose_eulers_meta: List[dict] = []  # NEW: to store pose eulers for meta
+    pose_eulers_meta: List[dict] = []  #  to store pose eulers for meta
     for i, fid in enumerate(selected_fids):
         if fid not in can_df.index:
             continue
@@ -668,7 +668,7 @@ def visualize_and_export_can_land(
         )
         column_titles.append(f"Frame {fid}")
 
-        # NEW: Add Yaw/Pitch/Roll labels under land_can plots when pose is available
+        #  Add Yaw/Pitch/Roll labels under land_can plots when pose is available
         if pose_df is not None and len(pose_df) > 0 and (rx_col or ry_col or rz_col):
             def _get(s, col, default=0.0):
                 try:
@@ -752,9 +752,9 @@ def visualize_and_export_can_land(
     if overlay_trace_indices: meta["overlay_trace_indices"] = overlay_trace_indices
     if rect_shape_indices:    meta["rectangle_shape_indices"] = rect_shape_indices
     if image_trace_indices:   meta["image_trace_indices"] = image_trace_indices
-    if privacy_pairs:         meta["privacy_pairs"] = privacy_pairs   # NEW: enable Blur button
-    if blur_default:          meta["blur_initial"] = True             # NEW
-    # NEW: persist titles and eulers for export consistency
+    if privacy_pairs:         meta["privacy_pairs"] = privacy_pairs   #  enable Blur button
+    if blur_default:          meta["blur_initial"] = True             # 
+    #  persist titles and eulers for export consistency
     if column_titles:         meta["pose_column_titles"] = column_titles
     if pose_eulers_meta:      meta["pose_eulers"] = pose_eulers_meta
     if meta: fig.update_layout(meta=meta)
@@ -811,8 +811,8 @@ def make_centered_subplot_with_overlay(
     overlay_trace_indices: List[int] = []
     privacy_pairs: List[Tuple[int, int]] = []
     image_trace_indices: List[int] = []
-    rect_shape_indices: List[int] = []  # NEW: collect rectangle shape indices
-    rectangle_overlay_trace_indices: List[int] = []  # NEW: rectangles drawn as traces (landmark main)
+    rect_shape_indices: List[int] = []  #  collect rectangle shape indices
+    rectangle_overlay_trace_indices: List[int] = []  #  rectangles drawn as traces (landmark main)
 
     for idx, crop in enumerate(crops):
         row = idx // ncols + 1
@@ -844,7 +844,7 @@ def make_centered_subplot_with_overlay(
                 row=row,
                 col=col,
             )
-            # NEW: record this rectangle shape index
+            #  record this rectangle shape index
             try:
                 if fig.layout.shapes:
                     rect_shape_indices.append(len(fig.layout.shapes) - 1)
@@ -900,7 +900,7 @@ def make_centered_subplot_with_overlay(
                     row=row,
                     col=col,
                 )
-                rectangle_overlay_trace_indices.append(len(fig.data) - 1)  # NEW
+                rectangle_overlay_trace_indices.append(len(fig.data) - 1)  
 
         # Hide ticks and flip Y; then lock ranges to prevent autorange flips
         fig.update_xaxes(showticklabels=False, visible=False, row=row, col=col)
@@ -937,7 +937,7 @@ def make_centered_subplot_with_overlay(
         meta_dict["image_trace_indices"] = image_trace_indices
     if rect_shape_indices:
         meta_dict["rectangle_shape_indices"] = rect_shape_indices
-    if rectangle_overlay_trace_indices:                                  # NEW
+    if rectangle_overlay_trace_indices:                                  # 
         meta_dict["rectangle_trace_indices"] = rectangle_overlay_trace_indices
     if meta_dict:
         fig.update_layout(meta=meta_dict)
@@ -968,8 +968,8 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
     overlay_indices = []
     privacy_pairs = []
     image_indices = []
-    rectangle_shape_indices = []  # NEW
-    rectangle_trace_indices = []  # NEW
+    rectangle_shape_indices = []  
+    rectangle_trace_indices = []  
 
     try:
         meta = fig.layout.meta or {}
@@ -986,10 +986,10 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
     privacy_pairs_json = json.dumps(privacy_pairs)
     image_indices_json = json.dumps(image_indices)
     rectangles_json = json.dumps(rectangle_shape_indices)          # shapes
-    rectangle_traces_json = json.dumps(rectangle_trace_indices)    # NEW: traces
+    rectangle_traces_json = json.dumps(rectangle_trace_indices)    #  traces
 
     has_landmarks = bool(overlay_indices)
-    has_rectangles = bool(rectangle_shape_indices) or bool(rectangle_trace_indices)  # NEW
+    has_rectangles = bool(rectangle_shape_indices) or bool(rectangle_trace_indices)  
     has_privacy = bool(privacy_pairs)
     has_remove = bool(image_indices)
     export_filename_safe = export_filename.replace(" ", "_")
@@ -1069,7 +1069,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
     (function() {
       const overlayIdx = $overlay_json;          // landmark trace indices
       const rectShapeIdx = $rectangles_json;     // rectangle shape indices
-      const rectTraceIdx = $rectangle_traces_json; // NEW: rectangle traces
+      const rectTraceIdx = $rectangle_traces_json; //  rectangle traces
       const privacyPairs = $privacy_pairs_json;
       const imageIdxs = $image_indices_json;
 
@@ -1088,7 +1088,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
 
       function exportFilename(suffix) { return '$export_filename_safe' + (suffix ? ('_' + suffix) : '') + '.png'; }
 
-      // NEW: read initial blur preference from layout meta
+      //  read initial blur preference from layout meta
       function readBlurInitial() {
         try {
           const m = (gd && gd.layout && gd.layout.meta) ? gd.layout.meta : {};
@@ -1097,7 +1097,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
       }
       const blurInitial = readBlurInitial();
 
-      // NEW: Capture and re-apply original image axes to prevent flips on toggles
+      //  Capture and re-apply original image axes to prevent flips on toggles
       const originalAxisRanges = {}; // e.g., { xaxis: [0, W], yaxis: [H, 0], xaxis2: [...], yaxis2: [...] }
       function axisKeyFromId(id) { // 'x' -> 'xaxis', 'x2' -> 'xaxis2', 'y' -> 'yaxis', ...
         if (!id || typeof id !== 'string') return '';
@@ -1106,7 +1106,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
       function captureImageAxisRanges() {
         try {
           const full = gd && gd._fullData ? gd._fullData : [];
-          const seen = new Set();
+          const seen =  Set();
           for (const idx of (imageIdxs || [])) {
             const f = full[idx];
             if (!f || !f.xaxis || !f.yaxis) continue;
@@ -1152,7 +1152,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
           try { await Plotly.restyle(gd, {visible: on}, overlayIdx); } catch (e) { console.warn(e); }
         }
         updateLandmarksBtn();
-        // NEW: enforce original axes after visibility changes
+        //  enforce original axes after visibility changes
         reapplyImageAxisRanges();
       }
 
@@ -1181,7 +1181,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
       }
 
       // Blur helpers
-      let blurOn = blurInitial;  // NEW: honor initial request
+      let blurOn = blurInitial;  //  honor initial request
       function updateBlurBtn() {
         if (blurBtn) {
           blurBtn.textContent = blurOn ? 'Unblur Face' : 'Blur Face';
@@ -1228,16 +1228,16 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
           } catch(e) { console.warn(e); }
         }
         updateRemoveBtn();
-        // NEW: enforce original axes after visibility changes
+        //  enforce original axes after visibility changes
         reapplyImageAxisRanges();
       }
 
       function afterPlotted() {
-        captureImageAxisRanges();     // NEW: capture once
-        reapplyImageAxisRanges();     // NEW: enforce immediately
+        captureImageAxisRanges();     //  capture once
+        reapplyImageAxisRanges();     //  enforce immediately
         if (hasLandmarks) setLandmarks(true);
         if (hasRectangles) setRectangles(true);
-        if (hasPrivacy) setBlur(blurOn);  // NEW: apply requested initial blur
+        if (hasPrivacy) setBlur(blurOn);  //  apply requested initial blur
         if (hasRemove) setRemove(false);
       }
 
@@ -1272,10 +1272,10 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
             const baseLayout = JSON.parse(JSON.stringify(srcGd.layout || {}));
             // Remove annotations to avoid misplacement below scenes
             baseLayout.annotations = [];
-            // NEW: Remove any 2D shapes (e.g., red rectangles from top images) and images
+            //  Remove any 2D shapes (e.g., red rectangles from top images) and images
             baseLayout.shapes = [];
             baseLayout.images = [];
-            // NEW: Drop 2D cartesian axes (xaxis*, yaxis*) not needed in pose-only export
+            //  Drop 2D cartesian axes (xaxis*, yaxis*) not needed in pose-only export
             try {
               const axisKeys = Object.keys(baseLayout).filter(k => /^xaxis\\d*$|^yaxis\\d*$/i.test(k));
               for (const k of axisKeys) delete baseLayout[k];
@@ -1383,7 +1383,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
             tmp.style.left = '-10000px';
             tmp.style.top = '-10000px';
             document.body.appendChild(tmp);
-            await Plotly.newPlot(tmp, poseData, baseLayout, {displayModeBar: false, staticPlot: true});
+            await Plotly.Plot(tmp, poseData, baseLayout, {displayModeBar: false, staticPlot: true});
             const url = await Plotly.toImage(tmp, {format: 'png', scale: 4});
             Plotly.purge(tmp);
             document.body.removeChild(tmp);
@@ -1410,7 +1410,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
         privacy_pairs_json=privacy_pairs_json,
         image_indices_json=image_indices_json,
         rectangles_json=rectangles_json,    # rectangle shapes
-        rectangle_traces_json=rectangle_traces_json,  # NEW: rectangle traces
+        rectangle_traces_json=rectangle_traces_json,  #  rectangle traces
     )
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
