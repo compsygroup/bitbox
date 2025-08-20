@@ -2,10 +2,12 @@ import pandas as pd
 import numpy as np
 
 def read_rectangles(file):
+    ext = file.split(".")[-1]
     _data = np.loadtxt(file)
     data = pd.DataFrame(_data, columns=['x', 'y', 'w', 'h'])  
 
     dict = {
+        'backend': ext,
         'frame count': data.shape[0],
         'type': 'rectangle',
         'format': 'for each frame (rows) [x, y, w, h] values of the detected rectangles',
@@ -14,9 +16,48 @@ def read_rectangles(file):
     }
     
     return dict
+
+
+def read_pose(file):
+    ext = file.split(".")[-1]
+    _data = np.loadtxt(file)
+    #first three are translation ignore middle three last three are angles
+    _data = _data[:, [0, 1, 2, 6, 7, 8]]
+    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
+
+    dict = {
+        'backend': ext,
+        'frame count': data.shape[0],
+        'type': 'pose',
+        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
+        'dimension': 3,
+        'data': data
+    }
+
+    return dict
+
+
+def read_pose_lite(file):
+    ext = file.split(".")[-1]
+    _data = np.loadtxt(file)
+    #first three are translation ignore middle three last three are angles
+    _data = _data[:, [0, 1, 2, 3, 4, 5]]
+    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
+
+    dict = {
+        'backend': ext,
+        'frame count': data.shape[0],
+        'type': 'pose',
+        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
+        'dimension': 3,
+        'data': data
+    }
+
+    return dict
     
     
 def read_landmarks(file):
+    ext = file.split(".")[-1]
     _data = np.loadtxt(file)
     
     num_landmarks = _data.shape[1] // 2
@@ -29,6 +70,7 @@ def read_landmarks(file):
     data = pd.DataFrame(_data, columns=column_list)
 
     dict = {
+        'backend': ext,
         'frame count': data.shape[0],
         'type': 'landmark',
         'format': 'for each frame (rows) [x, y] values of the detected landmarks',
@@ -40,41 +82,34 @@ def read_landmarks(file):
     return dict
 
 
-def read_pose(file):
+def read_canonical_landmarks(file):
+    ext = file.split(".")[-1]
     _data = np.loadtxt(file)
-    #first three are translation ignore middle three last three are angles
-    _data = _data[:, [0, 1, 2, 6, 7, 8]]
-    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
+    
+    num_landmarks = _data.shape[1] // 3
+    if num_landmarks == 51:
+        schema = 'ibug51'
+        column_list = [f'{c}{i}' for i in range(num_landmarks) for c in 'xyz']
+    else:
+        raise ValueError(f"Unrecognized landmark schema.")
+    
+    data = pd.DataFrame(_data, columns=column_list)
 
     dict = {
+        'backend': ext,
         'frame count': data.shape[0],
-        'type': 'pose',
-        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
+        'type': 'landmark-can',
+        'format': 'for each frame (rows) [x, y, z] values of the canonicalized landmarks',
+        'schema': schema,
         'dimension': 3,
         'data': data
     }
-
-    return dict
-
-
-def read_pose_lite(file):
-    _data = np.loadtxt(file)
-    #first three are translation ignore middle three last three are angles
-    _data = _data[:, [0, 1, 2, 3, 4, 5]]
-    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
-
-    dict = {
-        'frame count': data.shape[0],
-        'type': 'pose',
-        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
-        'dimension': 3,
-        'data': data
-    }
-
+    
     return dict
 
     
 def read_expression(file):
+    ext = file.split(".")[-1]
     _data = np.loadtxt(file)
     num_coeff = _data.shape[1]
     
@@ -105,33 +140,10 @@ def read_expression(file):
     data = pd.DataFrame(_data, columns=column_list)  
 
     dict = {
+        'backend': ext,
         'frame count': data.shape[0],
         'type': 'expression',
         'format': format,
-        'schema': schema,
-        'dimension': 3,
-        'data': data
-    }
-    
-    return dict
-
-
-def read_canonical_landmarks(file):
-    _data = np.loadtxt(file)
-    
-    num_landmarks = _data.shape[1] // 3
-    if num_landmarks == 51:
-        schema = 'ibug51'
-        column_list = [f'{c}{i}' for i in range(num_landmarks) for c in 'xyz']
-    else:
-        raise ValueError(f"Unrecognized landmark schema.")
-    
-    data = pd.DataFrame(_data, columns=column_list)
-
-    dict = {
-        'frame count': data.shape[0],
-        'type': 'landmark-can',
-        'format': 'for each frame (rows) [x, y, z] values of the canonicalized landmarks',
         'schema': schema,
         'dimension': 3,
         'data': data

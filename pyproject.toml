@@ -25,7 +25,12 @@ dependencies = [
     'PyWavelets',
     'matplotlib',
     'pandas',
-    'requests'
+    'requests',
+    'paramiko',
+    'plotly',
+    'opencv-python',
+    'pillow',
+    'kaleido'
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -40,3 +45,6 @@ classifiers = [
 Homepage = "https://github.com/compsygroup/bitbox"
 Documentation = "https://github.com/compsygroup/bitbox/wiki"
 Issues = "https://github.com/compsygroup/bitbox/issues"
+
+[tool.hatch.build]
+include = ["src/bitbox/data/*.csv"]
