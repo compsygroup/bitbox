@@ -6,10 +6,11 @@ import json
 import sys
 import zipfile
 import io
-
+from typing import List, Optional, Sequence, Tuple
 from time import time
 
-from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type
+from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type, visualize_and_export, visualize_and_export_can_land
+
 class FaceProcessor:
     def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
         self.verbose = verbose
@@ -396,6 +397,75 @@ class FaceProcessor:
             
         if not status:
             raise ValueError("Failed running %s" % name)
+        
+    def plot(self, data: dict, random_seed: int = 42, num_frames: int = 5, overlay: Optional[list] = None, 
+             pose: Optional[dict] = None,):
+
+        def _is_type(d: Optional[dict], t: str) -> bool:
+            return isinstance(d, dict) and d.get("type") == t
+
+        cushion_ratio = 0.35
+        video_path = self._local_file(self.file_input)
+
+        out_dir = os.path.join(self.output_dir, "plots")
+        os.makedirs(out_dir, exist_ok=True)
+
+        if not isinstance(data, dict) or "type" not in data:
+            raise ValueError("`data` must be a dict with a 'type' key in {'rectangle','landmark'}.")
+
+        if _is_type(data, "rectangle"):
+            # Primary is rectangles; optional overlay can be landmarks
+            if _is_type(overlay, "landmark"):
+                overlay_land = overlay
+            else:
+                overlay_land= None
+        
+
+            return visualize_and_export(
+                rects=data,
+                num_frames=num_frames,
+                video_path=video_path,
+                out_dir=out_dir,
+                random_seed=random_seed,
+                cushion_ratio=cushion_ratio,
+                overlay=overlay_land,
+                pose=pose,
+            )
+
+        if _is_type(data, "landmark"):
+            # Primary is landmarks; we need rectangles from either overlay or rect
+            rects_src = None
+            if _is_type(overlay, "rectangle"):
+                rects_src = overlay
+            else:
+                rects_src= None
+
+
+            return visualize_and_export(
+                rects=rects_src,
+                num_frames=num_frames,
+                video_path=video_path,
+                out_dir=out_dir,
+                random_seed=random_seed,
+                cushion_ratio=cushion_ratio,
+                overlay=data,   # landmarks become the overlay
+                pose=pose,
+            )
+        
+        if _is_type(data, "landmark-can"):
+                # Special case for canonical landmarks
+                return visualize_and_export_can_land(
+                    num_frames=num_frames,
+                    out_dir=out_dir,
+                    video_path=video_path,
+                    land_can = data,  
+                    pose=pose,
+                    overlay=overlay,  
+                )
+
+        raise ValueError(f"Unknown data type: {data.get('type')!r}. Expected 'rectangle' or 'landmark'.")
+
+
                  
         
     def preprocess(self):

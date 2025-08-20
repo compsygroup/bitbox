@@ -12,12 +12,11 @@ processor = FP(runtime='bitbox:latest')
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
 
+rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=True)
 
-rects = processor.detect_faces() # detect faces
-lands = processor.detect_landmarks() # detect landmarks
-
-plot(rects, video_path=input_file, output_dir=output_dir,overlay=lands) # visualize rectangles with optional landmarks
-plot(lands, video_path=input_file, output_dir=output_dir) # visualize landmarks 
+# processor.plot(land,overlay=rect,pose=pose) # plot landmarks with rectangle overlay and pose
+# processor.plot(rect,overlay=land,pose=pose) # plot rectangle with landmarks overlay and pose
+processor.plot(land_can,overlay=[rect,land], pose=pose) 
 
 
 
