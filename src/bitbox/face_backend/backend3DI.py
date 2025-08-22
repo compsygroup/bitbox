@@ -132,15 +132,25 @@ class FaceProcessor3DI(FaceProcessor):
                     output_file_idx=[-3, -2, -1])
 
         # STEP 4: Smooth expression and pose
-        self._execute('scripts/total_variance_rec.py',
-                    [self.file_expression, self.file_expression_smooth, self.model_morphable],
-                    "expression smoothing",
-                    output_file_idx=-2)
-                
-        self._execute('scripts/total_variance_rec_pose.py',
-                    [self.file_pose, self.file_pose_smooth],
-                    "pose smoothing",
-                    output_file_idx=-1)
+        try:
+            self._execute('scripts/total_variance_rec.py',
+                        [self.file_expression, self.file_expression_smooth, self.model_morphable],
+                        "expression smoothing",
+                        output_file_idx=-2)
+        except:
+            if self.verbose:
+                print("Skipping expression smoothing as it failed for this input")
+            self.file_expression_smooth = self.file_expression
+        
+        try:
+            self._execute('scripts/total_variance_rec_pose.py',
+                        [self.file_pose, self.file_pose_smooth],
+                        "pose smoothing",
+                        output_file_idx=-1)
+        except:
+            if self.verbose:
+                print("Skipping pose smoothing as it failed for this input")
+            self.file_pose_smooth = self.file_pose
         
         # STEP 5: Canonicalized landmarks
         self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
