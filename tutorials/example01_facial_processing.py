@@ -1,11 +1,11 @@
 from bitbox.face_backend import FaceProcessor3DI as FP
 
 # define input file and output directory
-input_file = 'data/elaine.mp4'
+input_file = 'data/birkan_symmetry.mp4'
 output_dir = 'output'
 
 # define a face processor
-processor = FP()
+processor = FP(runtime='bitbox:cuda12')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)

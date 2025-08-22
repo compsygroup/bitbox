@@ -19,6 +19,8 @@ setup(
     ],
     packages=find_packages("src"),
     package_dir={"": "src"},
+    include_package_data=True,
+    package_data={"bitbox": ["data/*.csv"]},
     python_requires = '>=3.8',
     install_requires = [
         'scipy',
@@ -29,6 +31,11 @@ setup(
         'PyWavelets',
         'matplotlib',
         'pandas',
-        'requests'
+        'requests',
+        'paramiko',
+        'plotly',
+        'opencv-python',
+        'pillow',
+        'kaleido'
     ]
 )

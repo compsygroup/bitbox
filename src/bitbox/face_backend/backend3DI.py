@@ -9,6 +9,8 @@ from .reader3DI import read_rectangles, read_landmarks
 from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
+from .postProcess3DI import normalizeExpressions3DI
+
 class FaceProcessor3DI(FaceProcessor):
     def __init__(self, *args, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, **kwargs):
         # Run the parent class init
@@ -106,7 +108,7 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def fit(self):
+    def fit(self, normalize=True):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -139,7 +141,7 @@ class FaceProcessor3DI(FaceProcessor):
                     [self.file_pose, self.file_pose_smooth],
                     "pose smoothing",
                     output_file_idx=-1)
-            
+        
         # STEP 5: Canonicalized landmarks
         self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
                     [self.file_expression_smooth, self.file_landmarks_canonicalized, self.model_morphable],
@@ -162,6 +164,8 @@ class FaceProcessor3DI(FaceProcessor):
             return files
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
+            if normalize:
+                out_exp = normalizeExpressions3DI(out_exp)
             out_pose = read_pose(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             
