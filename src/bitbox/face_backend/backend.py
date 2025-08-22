@@ -9,7 +9,7 @@ import io
 from typing import List, Optional, Sequence, Tuple
 from time import time
 
-from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type, visualize_and_export, visualize_and_export_can_land
+from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type, visualize_and_export, visualize_and_export_can_land, visualize_expressions_3d, visualize_and_export_pose, check_data_type
 
 class FaceProcessor:
     def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
@@ -399,10 +399,24 @@ class FaceProcessor:
             raise ValueError("Failed running %s" % name)
         
     def plot(self, data: dict, random_seed: int = 42, num_frames: int = 5, overlay: Optional[list] = None, 
-             pose: Optional[dict] = None,):
+             pose: Optional[dict] = None, video: bool = False,):
 
-        def _is_type(d: Optional[dict], t: str) -> bool:
-            return isinstance(d, dict) and d.get("type") == t
+        # helpers to parse overlay variants (list or dict) into landmark/rectangle pieces
+        def _parse_overlay(ov) -> tuple:
+            overlay_land = None
+            overlay_rect = None
+            if isinstance(ov, list):
+                for value in ov:
+                    if check_data_type(value, 'landmark'):
+                        overlay_land = value
+                    elif check_data_type(value, 'rectangle'):
+                        overlay_rect = value
+            elif isinstance(ov, dict):
+                if check_data_type(ov, 'landmark'):
+                    overlay_land = ov
+                elif check_data_type(ov, 'rectangle'):
+                    overlay_rect = ov
+            return overlay_land, overlay_rect
 
         cushion_ratio = 0.35
         video_path = self._local_file(self.file_input)
@@ -410,17 +424,14 @@ class FaceProcessor:
         out_dir = os.path.join(self.output_dir, "plots")
         os.makedirs(out_dir, exist_ok=True)
 
-        if not isinstance(data, dict) or "type" not in data:
-            raise ValueError("`data` must be a dict with a 'type' key in {'rectangle','landmark'}.")
+        if not check_data_type(data, ['rectangle', 'landmark', 'landmark-can', 'expression', 'pose']):
+            raise ValueError("`data` must be a dict with a 'type' key in {'rectangle','landmark','landmark-can','expression','pose'}.")
 
-        if _is_type(data, "rectangle"):
-            # Primary is rectangles; optional overlay can be landmarks
-            if _is_type(overlay, "landmark"):
-                overlay_land = overlay
-            else:
-                overlay_land= None
-        
+        # Unpack overlay when provided as list/dict
+        overlay_land, overlay_rect = _parse_overlay(overlay)
 
+        if check_data_type(data, 'rectangle'):
+            # Primary is rectangles; optional overlay can be landmarks (from overlay list/dict)
             return visualize_and_export(
                 rects=data,
                 num_frames=num_frames,
@@ -428,19 +439,15 @@ class FaceProcessor:
                 out_dir=out_dir,
                 random_seed=random_seed,
                 cushion_ratio=cushion_ratio,
-                overlay=overlay_land,
+                overlay=overlay_land,   # pass only landmark overlay here
                 pose=pose,
+                video=video,
+                
             )
 
-        if _is_type(data, "landmark"):
-            # Primary is landmarks; we need rectangles from either overlay or rect
-            rects_src = None
-            if _is_type(overlay, "rectangle"):
-                rects_src = overlay
-            else:
-                rects_src= None
-
-
+        if check_data_type(data, 'landmark'):
+            # Primary is landmarks; rectangles can come from overlay list/dict
+            rects_src = overlay_rect if overlay_rect is not None else None
             return visualize_and_export(
                 rects=rects_src,
                 num_frames=num_frames,
@@ -450,21 +457,44 @@ class FaceProcessor:
                 cushion_ratio=cushion_ratio,
                 overlay=data,   # landmarks become the overlay
                 pose=pose,
+                video=video,
             )
         
-        if _is_type(data, "landmark-can"):
-                # Special case for canonical landmarks
-                return visualize_and_export_can_land(
-                    num_frames=num_frames,
-                    out_dir=out_dir,
-                    video_path=video_path,
-                    land_can = data,  
-                    pose=pose,
-                    overlay=overlay,  
-                )
+        if check_data_type(data, 'landmark-can'):
+            # Special case for canonical landmarks; this function already supports overlay list/dict
+            return visualize_and_export_can_land(
+                num_frames=num_frames,
+                out_dir=out_dir,
+                video_path=video_path,
+                land_can=data,
+                pose=pose,
+                overlay=overlay,
+            )
 
-        raise ValueError(f"Unknown data type: {data.get('type')!r}. Expected 'rectangle' or 'landmark'.")
+        if check_data_type(data, 'expression'):
+            # Special case for expressions; forward overlay (list or dict) to enable cropping + overlays
+            return visualize_expressions_3d(
+                expressions=data,
+                out_dir=out_dir,
+                video_path=video_path,
+                smooth=0,
+                normalize=None,
+                downsample=1,
+                play_fps=5,
+                overlay=overlay,
+            )
 
+        if check_data_type(data, 'pose'):
+            # Special case for pose; forward overlay (list or dict) to enable cropping + overlays
+            return visualize_and_export_pose(
+                pose=data,
+                num_frames=num_frames,
+                video_path=video_path,
+                out_dir=out_dir,
+                overlay=overlay,
+            )
+
+        raise ValueError(f"Unknown data type: {getattr(data, 'get', lambda *_: None)('type')!r}. Expected 'rectangle', 'landmark', 'landmark-can', 'expression', or 'pose'.")
 
                  
         
