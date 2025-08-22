@@ -108,7 +108,7 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def fit(self, normalize=True):
+    def fit(self, normalize=False):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -206,11 +206,11 @@ class FaceProcessor3DI(FaceProcessor):
         rect = self.detect_faces()
         land = self.detect_landmarks()
         if self.return_output == 'file':
-            exp = self.fit()
+            exp = self.fit(normalize=normalize)
         elif self.return_output == 'dict':
-            exp_glob, pose, land_can = self.fit()
+            exp_glob, pose, land_can = self.fit(normalize=normalize)
         else:
-            self.fit()
+            self.fit(normalize=normalize)
         exp_loc = self.localized_expressions(normalize=normalize)
         
         if self.return_output == 'file':
