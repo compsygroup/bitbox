@@ -108,7 +108,7 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def fit(self, normalize=True):
+    def fit(self, normalize=False):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -132,15 +132,25 @@ class FaceProcessor3DI(FaceProcessor):
                     output_file_idx=[-3, -2, -1])
 
         # STEP 4: Smooth expression and pose
-        self._execute('scripts/total_variance_rec.py',
-                    [self.file_expression, self.file_expression_smooth, self.model_morphable],
-                    "expression smoothing",
-                    output_file_idx=-2)
-                
-        self._execute('scripts/total_variance_rec_pose.py',
-                    [self.file_pose, self.file_pose_smooth],
-                    "pose smoothing",
-                    output_file_idx=-1)
+        try:
+            self._execute('scripts/total_variance_rec.py',
+                        [self.file_expression, self.file_expression_smooth, self.model_morphable],
+                        "expression smoothing",
+                        output_file_idx=-2)
+        except:
+            if self.verbose:
+                print("Skipping expression smoothing as it failed for this input")
+            self.file_expression_smooth = self.file_expression
+        
+        try:
+            self._execute('scripts/total_variance_rec_pose.py',
+                        [self.file_pose, self.file_pose_smooth],
+                        "pose smoothing",
+                        output_file_idx=-1)
+        except:
+            if self.verbose:
+                print("Skipping pose smoothing as it failed for this input")
+            self.file_pose_smooth = self.file_pose
         
         # STEP 5: Canonicalized landmarks
         self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
@@ -196,11 +206,11 @@ class FaceProcessor3DI(FaceProcessor):
         rect = self.detect_faces()
         land = self.detect_landmarks()
         if self.return_output == 'file':
-            exp = self.fit()
+            exp = self.fit(normalize=normalize)
         elif self.return_output == 'dict':
-            exp_glob, pose, land_can = self.fit()
+            exp_glob, pose, land_can = self.fit(normalize=normalize)
         else:
-            self.fit()
+            self.fit(normalize=normalize)
         exp_loc = self.localized_expressions(normalize=normalize)
         
         if self.return_output == 'file':

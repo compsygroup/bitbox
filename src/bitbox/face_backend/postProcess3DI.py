@@ -3,6 +3,7 @@ from .. import data
 from ..utilities import check_data_type
 
 import numpy as np
+import pandas as pd
 
 def normalizeExpressions3DI(exps):
     # check data type
@@ -25,6 +26,6 @@ def normalizeExpressions3DI(exps):
     sign = np.where(exp > U, 1.0, np.where(exp < L, -1.0, 0.0))
     z = sign * (np.abs(d) / sigma)
     
-    exps['data'] = z
+    exps['data'] = pd.DataFrame(z, columns=exp.columns, index=exp.index)
         
     return exps

@@ -312,7 +312,7 @@ class FaceProcessor:
         if self.API and (caller_name in self.API_callers):
             verbose = False
         else:
-            verbose = True
+            verbose = self.verbose
             # add the method name to the list of active calls so that we don't call the server again
             self.API_callers.add(caller_name)
 
