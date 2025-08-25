@@ -985,16 +985,35 @@ def visualize_and_export_can_land(
     return
 
 
-def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str] = None, num_frames: int = 5, overlay: Optional[dict] = None):
-    """Render a 3D pose axis visualization (optionally with top-row video frames).
-    Adds camera presets and a Pose-only export button. If video is provided, frames are
-    cropped/overlaid similarly to other grid helpers.
+def visualize_and_export_pose(
+    pose: dict,
+    out_dir: str,
+    video_path: Optional[str] = None,   # if provided -> also emit video-format HTML
+    num_frames: int = 5,
+    overlay: Optional[dict] = None,
+    video: bool = False,            # when True and video_path provided: left = video, right = live 3D pose axes
+):
+    """Render a 3D pose axis visualization (grid) and, if video is provided,
+    also emit a 'video-format' HTML using write_video_overlay_html with pose axes.
+
+    - Grid HTML (existing behavior): top row frames (optional), bottom row 3D axes.
+    - Video HTML (new behavior): left = cropped video with overlays, right = live 3D pose axes synced to frames.
     """
+    # --- Imports kept local to be drop-in safe
+    import os, numpy as np, pandas as pd, cv2
+    import plotly.graph_objs as go
+    from plotly.subplots import make_subplots
+    from typing import Optional, List, Tuple
+
+    # ---------- helpers carried over from your snippet ----------
     def _safe_df(d: Optional[dict]):
         return d["data"] if isinstance(d, dict) and "data" in d else None
 
     def _dtype(d: Optional[dict]) -> Optional[str]:
         return d.get("type") if isinstance(d, dict) else None
+
+    # You already have _find_col, select_diverse_frames_maxmin, crop_and_scale, get_frame, euler_to_rotmat, write_centered_html
+    # This function assumes they are in scope. If not, import from your module.
 
     pose_df = _safe_df(pose)
     if pose_df is None or len(pose_df) == 0:
@@ -1007,7 +1026,118 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
     if rx_col is None or ry_col is None or rz_col is None:
         raise KeyError(f"Pose DataFrame must contain Rx/Ry/Rz (or pitch/yaw/roll). Have: {list(pose_df.columns)}")
 
-    # --- Select diverse frames by yaw/pitch
+    # --- Video-format HTML (NEW) if video is provided --------------------------
+    # Build per-frame pose map + optional overlay maps => feed to write_video_overlay_html
+    if video and video_path:
+        # Decide units for write_video_overlay_html ("rad" or "deg")
+        # If angles look like degrees, keep them as degrees and pass pose_units="deg"
+        try:
+            sample = np.asarray(pose_df[[rx_col, ry_col, rz_col]].values, dtype=float)
+            max_abs = float(np.max(np.abs(sample))) if sample.size else 0.0
+        except Exception:
+            max_abs = 0.0
+        pose_units = "deg" if max_abs > (np.pi * 1.25) else "rad"
+
+        # Build pose_euler_map: frame -> [rx, ry, rz] (in whatever units we detected above)
+        # Keep original numbers untouched so the units flag remains truthful.
+        pose_euler_map = {}
+        for idx, row in pose_df.iterrows():
+            try:
+                rx, ry, rz = float(row[rx_col]), float(row[ry_col]), float(row[rz_col])
+                pose_euler_map[int(idx)] = [rx, ry, rz]
+            except Exception:
+                continue
+
+        # Extract overlay DataFrames (optional)
+        overlay_land = None
+        overlay_rect = None
+        if isinstance(overlay, list):
+            for value in overlay:
+                if isinstance(value, dict) and _dtype(value) == "landmark":
+                    overlay_land = value
+                elif isinstance(value, dict) and _dtype(value) == "rectangle":
+                    overlay_rect = value
+        elif isinstance(overlay, dict) and "type" in overlay:
+            if _dtype(overlay) == "landmark":
+                overlay_land = overlay
+            elif _dtype(overlay) == "rectangle":
+                overlay_rect = overlay
+
+        overlay_land_df = _safe_df(overlay_land)
+        overlay_rect_df = _safe_df(overlay_rect)
+
+        # Helper to normalize rectangle row (x,y,w,h)
+        def _extract_rect_row(row) -> Optional[Tuple[float, float, float, float]]:
+            try:
+                if all(c in row.index for c in ("x", "y", "w", "h")):
+                    return float(row["x"]), float(row["y"]), float(row["w"]), float(row["h"])
+                if all(c in row.index for c in ("left", "top", "width", "height")):
+                    return float(row["left"]), float(row["top"]), float(row["width"]), float(row["height"])
+                if all(c in row.index for c in ("x1", "y1", "x2", "y2")):
+                    x1, y1, x2, y2 = float(row["x1"]), float(row["y1"]), float(row["x2"]), float(row["y2"])
+                    return x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1)
+            except Exception:
+                return None
+            return None
+
+        # Build rects_map: frame -> [ {x,y,w,h}, ... ]
+        rects_map = {}
+        if overlay_rect_df is not None and len(overlay_rect_df) > 0:
+            for fid, r in overlay_rect_df.iterrows():
+                rect = _extract_rect_row(r)
+                if rect is not None:
+                    x, y, w, h = rect
+                    rects_map[int(fid)] = [{"x": float(x), "y": float(y), "w": float(w), "h": float(h)}]
+
+        # Build lands_map: frame -> [ [x,y], ... ]
+        lands_map = {}
+        if overlay_land_df is not None and len(overlay_land_df) > 0:
+            for fid, l in overlay_land_df.iterrows():
+                vals = getattr(l, "values", np.asarray(l))
+                try:
+                    xs = np.asarray(vals[::2], dtype=float)
+                    ys = np.asarray(vals[1::2], dtype=float)
+                    lands_map[int(fid)] = [[float(x), float(y)] for x, y in zip(xs, ys)]
+                except Exception:
+                    continue
+
+        # Emit the video-format HTML beside the grid HTML
+        os.makedirs(out_dir or ".", exist_ok=True)
+        out_path_video = os.path.join(out_dir, "bitbox_viz.html")
+
+        fps = 30.0
+        frame_count = None
+        vw = vh = None
+        try:
+            cap = cv2.VideoCapture(video_path)
+            f = cap.get(cv2.CAP_PROP_FPS)
+            if f and f > 1e-3:
+                fps = float(f)
+            n = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
+            vw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None
+            vh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or None
+            cap.release()
+        except Exception:
+            pass
+
+        write_video_overlay_html(
+            video_src=video_path,
+            out_path=out_path_video,
+            rects_map=rects_map or None,
+            lands_map=lands_map or None,
+            can3d_map=None,                    # or your canonical 3D map if you have it
+            pose_euler_map=pose_euler_map,     # if you’re showing the 3D axes from pose
+            pose_units=pose_units,             # "deg" or "rad"
+            fps=fps,
+            video_w=vw, video_h=vh,
+            title="Video + Head Pose (3D axes)",
+            cushion_ratio=0.35,
+            fixed_portrait=True, portrait_w=360, portrait_h=480,
+        )
+        return 
+
+    # Select diverse frames by yaw/pitch
     k = max(1, min(int(num_frames), len(pose_df)))
     try:
         idxs = select_diverse_frames_maxmin(
@@ -1019,21 +1149,20 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
         )
         frame_ids = [int(pose_df.index[i]) for i in idxs]
     except Exception:
-        # Fallback: evenly spaced
         ilocs = np.unique(np.linspace(0, len(pose_df) - 1, num=k, dtype=int)).tolist()
         frame_ids = [int(pose_df.index[i]) for i in ilocs]
 
     if not frame_ids:
         return None
 
-    # --- Helper: ensure radians if input appears to be degrees
+    # Ensure radians if input appears to be degrees (for grid math/labels)
     def ensure_radians(vals: np.ndarray) -> np.ndarray:
         vals = np.asarray(vals, dtype=float)
         if np.max(np.abs(vals)) > np.pi * 1.25:  # likely degrees
             return np.deg2rad(vals)
         return vals
 
-    # --- Parse overlay inputs (optional)
+    # Parse overlay inputs (optional) for grid
     overlay_land = None
     overlay_rect = None
     blur_default = False
@@ -1061,21 +1190,23 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
     overlay_rect_df = _safe_df(overlay_rect)
     overlay_present = (overlay_land_df is not None) or (overlay_rect_df is not None)
 
-    # --- Figure grid
+    # Figure grid
     have_video = bool(video_path)
-    ncols = len(frame_ids)
-    cell_w, cell_h = TARGET_SIZE
+    try:
+        cell_w, cell_h = TARGET_SIZE  # global constant in your codebase
+    except Exception:
+        cell_w, cell_h = (240, 300)
 
     if have_video:
         nrows = 2
-        specs = [[{"type": "image"}] * ncols, [{"type": "scene"}] * ncols]
+        specs = [[{"type": "image"}] * len(frame_ids), [{"type": "scene"}] * len(frame_ids)]
         row_heights = [0.5, 0.5]
         v_gap_px = 20
         tb_margin = 80
         fig_h = int(2 * cell_h + v_gap_px + 2 * tb_margin)
     else:
         nrows = 1
-        specs = [[{"type": "scene"}] * ncols]
+        specs = [[{"type": "scene"}] * len(frame_ids)]
         row_heights = [1.0]
         v_gap_px = 10
         tb_margin = 80
@@ -1083,11 +1214,11 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
 
     h_gap_px = 10
     lr_margin = 30
-    fig_w = int(ncols * cell_w + max(0, ncols - 1) * h_gap_px + 2 * lr_margin)
+    fig_w = int(len(frame_ids) * cell_w + max(0, len(frame_ids) - 1) * h_gap_px + 2 * lr_margin)
 
     fig = make_subplots(
         rows=nrows,
-        cols=ncols,
+        cols=len(frame_ids),
         specs=specs,
         vertical_spacing=0.03,
         horizontal_spacing=0.01,
@@ -1097,51 +1228,13 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
     image_trace_indices: List[int] = []
     column_titles: List[str] = []
     pose_eulers_meta: List[dict] = []
-    overlay_trace_indices: List[int] = []  # landmark scatters
-    rect_shape_indices: List[int] = []     # rectangle shapes
-    privacy_pairs: List[Tuple[int, int]] = []  # (orig_img_idx, blur_img_idx)
+    overlay_trace_indices: List[int] = []
+    rect_shape_indices: List[int] = []
+    privacy_pairs: List[Tuple[int, int]] = []
 
-    # --- NEW: indices for toggles + helpers
     label_trace_indices: List[int] = []
     plane_trace_indices: List[int] = []
     follow_cameras: List[dict] = []
-
-    def _plane_surface(R: np.ndarray, plane: str = "xy", L: float = 1.05, opacity: float = 0.18):
-        # small 2x2 grid in local plane, rotated by R
-        S, T = np.meshgrid(np.array([-L, L]), np.array([-L, L]))
-        if plane == "xy":
-            Xl, Yl, Zl = S, T, np.zeros_like(S)
-        elif plane == "yz":
-            Xl, Yl, Zl = np.zeros_like(S), S, T
-        else:  # "zx"
-            Xl, Yl, Zl = S, np.zeros_like(S), T
-
-        Xw = np.zeros_like(Xl, dtype=float)
-        Yw = np.zeros_like(Yl, dtype=float)
-        Zw = np.zeros_like(Zl, dtype=float)
-        for i in range(Xl.shape[0]):
-            for j in range(Xl.shape[1]):
-                v = R @ np.array([Xl[i, j], Yl[i, j], Zl[i, j]])
-                Xw[i, j], Yw[i, j], Zw[i, j] = v[0], v[1], v[2]
-
-        sc = np.ones_like(Xw)
-        return go.Surface(
-            x=Xw, y=Yw, z=Zw,
-            surfacecolor=sc,
-            colorscale=[[0, "#DCDCDC"], [1, "#DCDCDC"]],
-            showscale=False, opacity=opacity, visible=False, hoverinfo="skip"
-        )
-
-    def _camera_follow_pose(R: np.ndarray, dist: float = 1.35):
-        base_eye = np.array([dist, dist, dist])
-        base_up  = np.array([0.0, 1.0, 0.0])
-        eye = R @ base_eye
-        up  = R @ base_up
-        return dict(eye=dict(x=float(eye[0]), y=float(eye[1]), z=float(eye[2])),
-                    up=dict(x=float(up[0]),  y=float(up[1]),  z=float(up[2])))
-
-    # --- Top row: frames (with optional crops/overlays)
-    cushion_ratio = 0.35
 
     def _extract_rect_row(row) -> Optional[Tuple[float, float, float, float]]:
         try:
@@ -1155,13 +1248,14 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
         except Exception:
             return None
         return None
-    
+
     def _scene_id(i: int) -> str:
         return "scene" if i == 0 else f"scene{i+1}"
 
+    # Top row frames with crops/overlays (grid)
+    cushion_ratio = 0.35
     if have_video:
         for i, fid in enumerate(frame_ids):
-            # Load frame
             try:
                 frame = get_frame(video_path, fid)
             except Exception:
@@ -1171,7 +1265,6 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
             x1 = y1 = 0.0
             sx = sy = 1.0
 
-            # Prefer rectangle-driven crop, then landmark-driven
             if overlay_present and (overlay_rect_df is not None) and (fid in overlay_rect_df.index):
                 r = overlay_rect_df.loc[fid]
                 rect = _extract_rect_row(r)
@@ -1195,14 +1288,12 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
                 except Exception:
                     crop = None
 
-            # If no crop possible, just resize
             if crop is None:
                 try:
-                    crop = cv2.resize(frame, TARGET_SIZE)
+                    crop = cv2.resize(frame, (cell_w, cell_h))
                 except Exception:
                     crop = frame
 
-            # Add image and optional blur pair if any overlay provided (so toolbar can offer privacy)
             if overlay_present:
                 fig.add_trace(go.Image(z=crop, visible=True), row=1, col=i + 1)
                 orig_idx = len(fig.data) - 1
@@ -1221,7 +1312,6 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
                 fig.add_trace(go.Image(z=crop), row=1, col=i + 1)
                 image_trace_indices.append(len(fig.data) - 1)
 
-            # Overlays
             if overlay_present and (overlay_rect_df is not None) and (fid in overlay_rect_df.index):
                 try:
                     r = overlay_rect_df.loc[fid]
@@ -1238,10 +1328,7 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
                             line=dict(color="red", width=2),
                             row=1, col=i + 1,
                         )
-                        try:
-                            rect_shape_indices.append(len(fig.layout.shapes) - 1)
-                        except Exception:
-                            pass
+                        rect_shape_indices.append(len(fig.layout.shapes) - 1)
                 except Exception:
                     pass
 
@@ -1267,61 +1354,52 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
                 except Exception:
                     pass
 
-            fig.update_xaxes(range=[0, TARGET_SIZE[0]], fixedrange=True, visible=False, row=1, col=i + 1)
-            fig.update_yaxes(range=[TARGET_SIZE[1], 0], fixedrange=True, visible=False, autorange=False, row=1, col=i + 1)
+            fig.update_xaxes(range=[0, cell_w], fixedrange=True, visible=False, row=1, col=i + 1)
+            fig.update_yaxes(range=[cell_h, 0], fixedrange=True, visible=False, autorange=False, row=1, col=i + 1)
 
-    # --- Bottom row: 3D pose axes (with arrowheads + world triad)
+    # Bottom row: 3D pose axes (grid)
     row3d = 2 if have_video else 1
-
     axis_len = 1.0
     shaft_width = 6
     cone_size = 0.18
-
     origin = np.zeros((3,))
     camera_iso = dict(eye=dict(x=1.35, y=1.35, z=1.35), up=dict(x=0, y=1, z=0))
 
-    def add_world_guides(col_idx: int):
-        fig.add_trace(
-            go.Scatter3d(
-                x=[0, 1.1], y=[0, 0], z=[0, 0],
-                mode="lines", line=dict(color="#A0A0A0", width=2),
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=row3d, col=col_idx
+    def _plane_surface(R: np.ndarray, plane: str = "xy", L: float = 1.05, opacity: float = 0.18):
+        S, T = np.meshgrid(np.array([-L, L]), np.array([-L, L]))
+        if plane == "xy":
+            Xl, Yl, Zl = S, T, np.zeros_like(S)
+        elif plane == "yz":
+            Xl, Yl, Zl = np.zeros_like(S), S, T
+        else:
+            Xl, Yl, Zl = S, np.zeros_like(S), T
+        Xw = np.zeros_like(Xl, dtype=float)
+        Yw = np.zeros_like(Yl, dtype=float)
+        Zw = np.zeros_like(Zl, dtype=float)
+        for i in range(Xl.shape[0]):
+            for j in range(Xl.shape[1]):
+                v = R @ np.array([Xl[i, j], Yl[i, j], Zl[i, j]])
+                Xw[i, j], Yw[i, j], Zw[i, j] = v[0], v[1], v[2]
+        sc = np.ones_like(Xw)
+        return go.Surface(
+            x=Xw, y=Yw, z=Zw,
+            surfacecolor=sc,
+            colorscale=[[0, "#DCDCDC"], [1, "#DCDCDC"]],
+            showscale=False, opacity=opacity, visible=False, hoverinfo="skip"
         )
-        fig.add_trace(
-            go.Scatter3d(
-                x=[0, 0], y=[0, 1.1], z=[0, 0],
-                mode="lines", line=dict(color="#A0A0A0", width=2),
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=row3d, col=col_idx
-        )
-        fig.add_trace(
-            go.Scatter3d(
-                x=[0, 0], y=[0, 0], z=[0, 1.1],
-                mode="lines", line=dict(color="#A0A0A0", width=2),
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=row3d, col=col_idx
-        )
-        L = 1.2
-        edges = [
-            ((-L,-L,-L),( L,-L,-L)), ((-L, L,-L),( L, L,-L)), ((-L,-L, L),( L,-L, L)), ((-L, L, L),( L, L, L)),
-            ((-L,-L,-L),(-L, L,-L)), (( L,-L,-L),( L, L,-L)), ((-L,-L, L),(-L, L, L)), (( L,-L, L),( L, L, L)),
-            ((-L,-L,-L),(-L,-L, L)), (( L,-L,-L),( L,-L, L)), ((-L, L,-L),(-L, L, L)), (( L, L,-L),( L, L, L)),
-        ]
-        for (a, b) in edges:
-            fig.add_trace(
-                go.Scatter3d(
-                    x=[a[0], b[0]], y=[a[1], b[1]], z=[a[2], b[2]],
-                    mode="lines", line=dict(color="#E0E0E0", width=1),
-                    showlegend=False, hoverinfo="skip",
-                ),
-                row=row3d, col=col_idx
-            )
+
+    def _camera_follow_pose(R: np.ndarray, dist: float = 1.35):
+        base_eye = np.array([dist, dist, dist])
+        base_up  = np.array([0.0, 1.0, 0.0])
+        eye = R @ base_eye
+        up  = R @ base_up
+        return dict(eye=dict(x=float(eye[0]), y=float(eye[1]), z=float(eye[2])),
+                    up=dict(x=float(up[0]),  y=float(up[1]),  z=float(up[2])))
 
     scene_ids = []
+    column_titles: List[str] = []
+    pose_eulers_meta: List[dict] = []
+    follow_cameras: List[dict] = []
 
     for i, fid in enumerate(frame_ids):
         col = i + 1
@@ -1345,24 +1423,22 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
         y_axis = R @ np.array([0.0, axis_len, 0.0])
         z_axis = R @ np.array([0.0, 0.0, axis_len])
 
-        add_world_guides(col_idx=col)
+        # World guides
+        for (xs, ys, zs) in (
+            ([0, 1.1], [0, 0], [0, 0]),
+            ([0, 0], [0, 1.1], [0, 0]),
+            ([0, 0], [0, 0], [0, 1.1]),
+        ):
+            fig.add_trace(go.Scatter3d(x=xs, y=ys, z=zs, mode="lines",
+                                       line=dict(color="#A0A0A0", width=2),
+                                       showlegend=False, hoverinfo="skip"), row=row3d, col=col)
 
-        fig.add_trace(
-            go.Scatter3d(
-                x=[0], y=[0], z=[0],
-                mode="markers",
-                marker=dict(size=3, color="#404040"),
-                showlegend=False,
-                hovertext=[f"Frame {fid}"],
-                hoverinfo="text",
-            ),
-            row=row3d, col=col
-        )
+        fig.add_trace(go.Scatter3d(x=[0], y=[0], z=[0], mode="markers",
+                                   marker=dict(size=3, color="#404040"),
+                                   showlegend=False, hovertext=[f"Frame {fid}"], hoverinfo="text"),
+                      row=row3d, col=col)
 
-        # Degrees + hover template
-        pitch_deg = float(np.rad2deg(rx))
-        yaw_deg   = float(np.rad2deg(ry))
-        roll_deg  = float(np.rad2deg(rz))
+        pitch_deg = float(np.rad2deg(rx)); yaw_deg = float(np.rad2deg(ry)); roll_deg = float(np.rad2deg(rz))
         hovertemplate = (
             "Frame %{customdata[0]:.0f}<br>"
             "pitch %{customdata[1]:.1f}°, yaw %{customdata[2]:.1f}°, roll %{customdata[3]:.1f}°<br>"
@@ -1370,183 +1446,104 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
         )
         cd = np.array([[fid, pitch_deg, yaw_deg, roll_deg]] * 2, dtype=float)
 
-        # Shafts (lines) with hover
-        fig.add_trace(
-            go.Scatter3d(
-                x=[origin[0], x_axis[0]], y=[origin[1], x_axis[1]], z=[origin[2], x_axis[2]],
-                mode="lines",
-                line=dict(color="red", width=shaft_width),
-                showlegend=False,
-                customdata=cd, hovertemplate=hovertemplate,
-            ),
-            row=row3d, col=col
-        )
-        fig.add_trace(
-            go.Scatter3d(
-                x=[origin[0], y_axis[0]], y=[origin[1], y_axis[1]], z=[origin[2], y_axis[2]],
-                mode="lines",
-                line=dict(color="green", width=shaft_width),
-                showlegend=False,
-                customdata=cd, hovertemplate=hovertemplate,
-            ),
-            row=row3d, col=col
-        )
-        fig.add_trace(
-            go.Scatter3d(
-                x=[origin[0], z_axis[0]], y=[origin[1], z_axis[1]], z=[origin[2], z_axis[2]],
-                mode="lines",
-                line=dict(color="blue", width=shaft_width),
-                showlegend=False,
-                customdata=cd, hovertemplate=hovertemplate,
-            ),
-            row=row3d, col=col
-        )
+        def _shaft(p, color):
+            return go.Scatter3d(x=[0, p[0]], y=[0, p[1]], z=[0, p[2]], mode="lines",
+                                line=dict(color=color, width=shaft_width), showlegend=False,
+                                customdata=cd, hovertemplate=hovertemplate)
 
-        # Arrowheads (cones) at the tips (no hover)
-        def _cone_at_tip(tip_vec, color):
-            return go.Cone(
-                x=[tip_vec[0]], y=[tip_vec[1]], z=[tip_vec[2]],
-                u=[-tip_vec[0]], v=[-tip_vec[1]], w=[-tip_vec[2]],
-                sizemode="absolute", sizeref=cone_size,
-                showscale=False, colorscale=[[0, color], [1, color]],
-                anchor="tip", hoverinfo="skip"
-            )
+        def _cone(p, color):
+            return go.Cone(x=[p[0]], y=[p[1]], z=[p[2]],
+                           u=[-p[0]], v=[-p[1]], w=[-p[2]],
+                           sizemode="absolute", sizeref=cone_size,
+                           showscale=False, colorscale=[[0, color], [1, color]],
+                           anchor="tip", hoverinfo="skip")
 
-        fig.add_trace(_cone_at_tip(x_axis, "red"),   row=row3d, col=col)
-        fig.add_trace(_cone_at_tip(y_axis, "green"), row=row3d, col=col)
-        fig.add_trace(_cone_at_tip(z_axis, "blue"),  row=row3d, col=col)
+        fig.add_trace(_shaft(x_axis, "red"),   row=row3d, col=col)
+        fig.add_trace(_shaft(y_axis, "green"), row=row3d, col=col)
+        fig.add_trace(_shaft(z_axis, "blue"),  row=row3d, col=col)
+        fig.add_trace(_cone(x_axis, "red"),    row=row3d, col=col)
+        fig.add_trace(_cone(y_axis, "green"),  row=row3d, col=col)
+        fig.add_trace(_cone(z_axis, "blue"),   row=row3d, col=col)
 
-        # Tip labels
+        # Labels + planes (hidden by default in your earlier code; keep simple here)
         label_scale = 1.08
-        def _label_at_tip(tip_vec, text):
-            p = tip_vec * label_scale
-            return go.Scatter3d(
-                x=[p[0]], y=[p[1]], z=[p[2]],
-                mode="text", text=[text],
-                textfont=dict(size=10),
-                showlegend=False, hoverinfo="skip", visible=True,
-            )
         for text, vec in (("pitch (X)", x_axis), ("yaw (Y)", y_axis), ("roll (Z)", z_axis)):
-            fig.add_trace(_label_at_tip(vec, text), row=row3d, col=col)
-            label_trace_indices.append(len(fig.data) - 1)
+            p = vec * label_scale
+            fig.add_trace(go.Scatter3d(x=[p[0]], y=[p[1]], z=[p[2]],
+                                       mode="text", text=[text],
+                                       textfont=dict(size=10),
+                                       showlegend=False, hoverinfo="skip"),
+                          row=row3d, col=col)
 
-        # Translucent planes (default hidden)
         for plane in ("xy", "yz", "zx"):
-            surf = _plane_surface(R, plane=plane, L=1.05, opacity=0.18)
-            fig.add_trace(surf, row=row3d, col=col)
-            plane_trace_indices.append(len(fig.data) - 1)
+            fig.add_trace(_plane_surface(R, plane=plane, L=1.05, opacity=0.18),
+                          row=row3d, col=col)
 
-        # Per-column labels + meta
+        # Per-column meta + scene config
         column_titles.append(f"Frame {fid}")
         pose_eulers_meta.append({
             "frame_idx": int(fid),
-            "pitch": float(rx),
-            "yaw": float(ry),
-            "roll": float(rz),
             "pitch_deg": pitch_deg,
             "yaw_deg": yaw_deg,
             "roll_deg": roll_deg,
         })
 
-        # Configure each 3D scene
-        scene_id = _scene_id(i)
-        scene_ids.append(scene_id)
+        scene_id = _scene_id(i); scene_ids.append(scene_id)
         fig.layout[scene_id].camera = camera_iso
         fig.layout[scene_id].aspectmode = "cube"
         rng = 1.3
-        fig.layout[scene_id].xaxis.update(range=[-rng, rng], showgrid=True, zeroline=False,
-                                          showticklabels=False, title="", gridcolor="#E6E6E6",
-                                          backgroundcolor="#FAFAFA")
-        fig.layout[scene_id].yaxis.update(range=[-rng, rng], showgrid=True, zeroline=False,
-                                          showticklabels=False, title="", gridcolor="#E6E6E6",
-                                          backgroundcolor="#FAFAFA")
-        fig.layout[scene_id].zaxis.update(range=[-rng, rng], showgrid=True, zeroline=False,
-                                          showticklabels=False, title="", gridcolor="#E6E6E6",
-                                          backgroundcolor="#FAFAFA")
-
-        # Store follow camera for this column
+        for ax in ("xaxis", "yaxis", "zaxis"):
+            getattr(fig.layout[scene_id], ax).update(
+                range=[-rng, rng], showgrid=True, zeroline=False,
+                showticklabels=False, title="", gridcolor="#E6E6E6",
+                backgroundcolor="#FAFAFA"
+            )
         follow_cameras.append(_camera_follow_pose(R, dist=1.35))
 
     if not column_titles:
         return None
+    
+    def _relayout_for(cam):
+    # one dict with all scene camera updates
+        return {f"{sid}.camera": cam for sid in scene_ids}
 
-    # --- Titles and layout
+    # per-scene "follow" cameras
+    follow_layout = {f"{sid}.camera": cam for sid, cam in zip(scene_ids, follow_cameras)}
+
+    cam_iso   = dict(eye=dict(x=1.35, y=1.35, z=1.35), up=dict(x=0, y=1, z=0))
+    cam_front = dict(eye=dict(x=0.001, y=0.001, z=2.2), up=dict(x=0, y=1, z=0))
+    cam_left  = dict(eye=dict(x=2.2, y=0.0, z=0.001),  up=dict(x=0, y=1, z=0))
+    cam_top   = dict(eye=dict(x=0.0, y=2.2, z=0.001),  up=dict(x=0, y=0, z=-1))
+
+    # Titles and layout
     title_text = "Video (top) and 3D Pose (bottom)" if have_video else "3D Pose"
     fig.update_layout(
         autosize=False,
-        width=fig_w,
-        height=fig_h,
+        width=fig_w, height=fig_h,
         showlegend=False,
         title={"text": title_text, "x": 0.5, "xanchor": "center"},
-        margin=dict(t=70, l=20, r=20, b=120 if have_video else 110),
-        font=dict(family="Roboto, system-ui, -apple-system, Arial, sans-serif", size=14, color="#111"),
+        margin=dict(t=80, l=30, r=30, b=120),
+        font=dict(family="Roboto, sans-serif", size=14, color="#111"),
         paper_bgcolor="white",
         plot_bgcolor="white",
+        updatemenus=[{
+            "type": "buttons",
+            "direction": "right",
+            "x": 0.50, "xanchor": "center",
+            "y": -0.08, "yanchor": "top",
+            "pad": {"t": 40, "l": 0, "r": 0},
+            "font": {"family": "Roboto, sans-serif", "size": 14, "color": "#111"},
+            "buttons": [
+                {"label": "ISO",    "method": "relayout", "args": [_relayout_for(cam_iso)]},
+                {"label": "Front",  "method": "relayout", "args": [_relayout_for(cam_front)]},
+                {"label": "Left",   "method": "relayout", "args": [_relayout_for(cam_left)]},
+                {"label": "Top",    "method": "relayout", "args": [_relayout_for(cam_top)]},
+                {"label": "Follow", "method": "relayout", "args": [follow_layout]},
+            ],
+        }],
     )
-
-    # Bottom-row labels: frame and Euler values under each scene
-    try:
-        for i in range(len(frame_ids)):
-            scene_id = _scene_id(i)
-
-            dom = fig.layout[scene_id].domain
-            xmid = (dom.x[0] + dom.x[1]) / 2.0
-            e = pose_eulers_meta[i]
-            txt1 = column_titles[i]
-            txt2 = f"pitch {e['pitch_deg']:.1f}°, yaw {e['yaw_deg']:.1f}°, roll {e['roll_deg']:.1f}°"
-            fig.add_annotation(
-                text=txt1,
-                x=xmid, y=dom.y[0] - 0.06, xref="paper", yref="paper",
-                showarrow=False, align="center", xanchor="center", yanchor="top",
-                font=dict(size=12),
-            )
-            fig.add_annotation(
-                text=txt2,
-                x=xmid, y=dom.y[0] - 0.095, xref="paper", yref="paper",
-                showarrow=False, align="center", xanchor="center", yanchor="top",
-                font=dict(size=11, color="#444"),
-            )
-    except Exception:
-        pass
-
-    # --- Camera preset buttons (apply to all scenes) + toggles
-    def _relayout_for(camera):
-        d = {}
-        for sid in scene_ids:
-            d[f"{sid}.camera"] = camera
-        return d
-
-    cam_iso  = dict(eye=dict(x=1.35, y=1.35, z=1.35), up=dict(x=0, y=1, z=0))
-    cam_front = dict(eye=dict(x=0.001, y=0.001, z=2.2), up=dict(x=0, y=1, z=0))
-    cam_left  = dict(eye=dict(x=2.2, y=0.0, z=0.001), up=dict(x=0, y=1, z=0))
-    cam_top   = dict(eye=dict(x=0.0, y=2.2, z=0.001), up=dict(x=0, y=0, z=-1))
-
-    # Build follow layout mapping (per-scene)
-    follow_layout = {}
-    for sid, cam in zip(scene_ids, follow_cameras):
-        follow_layout[f"{sid}.camera"] = cam
-
-    fig.update_layout(
-        updatemenus=[
-            dict(
-                type="buttons",
-                direction="right",
-                x=0.50, xanchor="center",
-                y=-0.08, yanchor="top",
-                pad=dict(t=40, l=0, r=0),
-                buttons=[
-                    dict(label="ISO",    method="relayout", args=[_relayout_for(cam_iso)]),
-                    dict(label="Front",  method="relayout", args=[_relayout_for(cam_front)]),
-                    dict(label="Left",   method="relayout", args=[_relayout_for(cam_left)]),
-                    dict(label="Top",    method="relayout", args=[_relayout_for(cam_top)]),
-                    dict(label="Follow", method="relayout", args=[follow_layout]),
-                ]
-            )
-        ]
-    )
-
-    # --- Toolbar meta for HTML helper
-    meta = {}
+    # Toolbar meta for your HTML helper
+    meta = {"pose_column_titles": column_titles, "pose_eulers": pose_eulers_meta}
     if image_trace_indices:
         meta["image_trace_indices"] = image_trace_indices
     if overlay_trace_indices:
@@ -1563,17 +1560,24 @@ def visualize_and_export_pose(pose: dict, out_dir: str, video_path: Optional[str
         meta["pose_eulers"] = pose_eulers_meta
     if meta:
         fig.update_layout(meta=meta)
+   
+    fig.update_layout(meta=meta)
+    fig.update_layout(
+    width=fig_w,
+    height=fig_h,
+    margin=dict(l=lr_margin, r=lr_margin, t=tb_margin, b=tb_margin),
+    paper_bgcolor="#FFFFFF"
+        )
 
-    # --- Write HTML with Pose-only export button enabled
-    html_path = os.path.join(out_dir, "bitbox_viz.html")
+    # Write the grid HTML
     os.makedirs(out_dir or ".", exist_ok=True)
+    html_path = os.path.join(out_dir, "bitbox_viz.html")
     try:
         write_centered_html(fig, html_path, export_filename="bitbox visualizations", add_pose_only_export=True)
     except Exception:
         pass
 
     return None
-
 
 # -----------------------------------------------------------------------------
 # Subplot builder for rectangle/landmark grids
@@ -3050,6 +3054,8 @@ def write_video_overlay_html(
     rects_map: Optional[dict] = None,
     lands_map: Optional[dict] = None,
     can3d_map: Optional[dict] = None,      # frame → [[x,y,z], ...]
+    pose_euler_map: Optional[dict] = None, # frame → [rx, ry, rz]
+    pose_units: str = "rad",               # "rad" or "deg"
     fps: float = 30.0,
     video_w: Optional[int] = None,
     video_h: Optional[int] = None,
@@ -3060,15 +3066,16 @@ def write_video_overlay_html(
     portrait_h: int = 480,
     can3d_decimate: int = 1,               # keep every k-th point (perf)
 ) -> None:
-    """Write an HTML page showing a cropped video with overlays + a synchronized, interactive 3D canonical-landmark plot.
+    """Write an HTML page showing a cropped video with overlays + a synchronized, interactive 3D pane.
 
     Implemented:
       - No border around 3D plot.
-      - No "3D only" toggle; 3D shows when data present.
-      - No "reset camera" button.
       - Export PNG (title + video pane + 3D snapshot).
       - Face Blur and Hide Face toggles (whole frame), overlays always visible.
-      - Buttons centered under the page.
+      - Centered toolbar.
+      - Head-pose axes with arrowheads + labels (pitch/yaw/roll), restyled every frame.
+      - Camera presets: ISO / Front / Left / Top / Follow (follow tracks head pose).
+      - View buttons positioned under the 3D pane.
     """
     import json, os
     from typing import List
@@ -3090,6 +3097,7 @@ def write_video_overlay_html(
     rects_map = rects_map or {}
     lands_map = lands_map or {}
     can3d_map = can3d_map or {}
+    pose_euler_map = pose_euler_map or {}
 
     # Optional decimation for can3d points (performance)
     if can3d_decimate and can3d_decimate > 1 and can3d_map:
@@ -3102,7 +3110,12 @@ def write_video_overlay_html(
                 decimated[int(f)] = pts
         can3d_map = decimated
 
-    total_frame_keys = sorted(set(rects_map.keys()) | set(lands_map.keys()) | set(can3d_map.keys()))
+    total_frame_keys = sorted(
+        set(rects_map.keys())
+        | set(lands_map.keys())
+        | set(can3d_map.keys())
+        | set(pose_euler_map.keys())
+    )
     MAX_INLINE_FRAMES = 300
     CHUNK_SIZE = 500
     use_chunks = len(total_frame_keys) > MAX_INLINE_FRAMES
@@ -3110,14 +3123,17 @@ def write_video_overlay_html(
     rects_json = "{}"
     lands_json = "{}"
     can3d_json = "{}"
+    pose_json = "{}"
     rect_chunk_starts: List[int] = []
     land_chunk_starts: List[int] = []
     can3d_chunk_starts: List[int] = []
+    pose_chunk_starts: List[int] = []
 
     if not use_chunks:
         if rects_map: rects_json = json.dumps(rects_map, separators=(",", ":"))
         if lands_map: lands_json = json.dumps(lands_map, separators=(",", ":"))
         if can3d_map: can3d_json = json.dumps(can3d_map, separators=(",", ":"))
+        if pose_euler_map: pose_json = json.dumps(pose_euler_map, separators=(",", ":"))
     else:
         def _make_chunks(src: dict, prefix: str) -> List[int]:
             if not src: return []
@@ -3131,9 +3147,12 @@ def write_video_overlay_html(
                 if chunk:
                     starts.append(start)
                     js_path = os.path.join(out_dir, f"{prefix}_chunk_{start}.js")
-                    func = "registerRectsChunk" if prefix == "rects" else \
-                           "registerLandsChunk" if prefix == "lands" else \
-                           "registerCan3dChunk"
+                    func = {
+                        "rects": "registerRectsChunk",
+                        "lands": "registerLandsChunk",
+                        "can3d": "registerCan3dChunk",
+                        "pose":  "registerPoseChunk",
+                    }[prefix]
                     with open(js_path, "w", encoding="utf-8") as jf:
                         jf.write(f"{func}({start},{json.dumps(chunk, separators=(',', ':'))});")
                 start += CHUNK_SIZE
@@ -3142,6 +3161,7 @@ def write_video_overlay_html(
         rect_chunk_starts = _make_chunks(rects_map, "rects")
         land_chunk_starts = _make_chunks(lands_map, "lands")
         can3d_chunk_starts = _make_chunks(can3d_map, "can3d")
+        pose_chunk_starts  = _make_chunks(pose_euler_map, "pose")
 
     fps_val = float(fps or 30.0)
     vw = int(video_w) if (video_w and video_w > 0) else None
@@ -3150,10 +3170,14 @@ def write_video_overlay_html(
     has_rects = bool(rects_map) or bool(rect_chunk_starts)
     has_lands = bool(lands_map) or bool(land_chunk_starts)
     has_can3d = bool(can3d_map) or bool(can3d_chunk_starts)
+    has_pose  = (bool(pose_euler_map) or bool(pose_chunk_starts)) and not has_can3d
+    has_3d    = has_can3d or has_pose
 
     if title == "Video Overlay":
         if has_can3d:
             computed_title = "Video + 3D Canonicalized Landmarks"
+        elif has_pose:
+            computed_title = "Video + Head Pose (3D axes)"
         elif has_lands and not has_rects:
             computed_title = "Video with Landmarks"
         elif has_rects and not has_lands:
@@ -3164,6 +3188,9 @@ def write_video_overlay_html(
             computed_title = title
     else:
         computed_title = title
+
+    # We won't inject view buttons into the bottom toolbar anymore
+    view_btns = ""
 
     # HTML template builder
     def _build_html(box_w: int, box_h: int) -> str:
@@ -3177,18 +3204,19 @@ def write_video_overlay_html(
   h2.title { margin:40px 0 14px; font-weight:400; font-size:20px; text-align:center; }
   .container { display:flex; gap:24px; justify-content:center; align-items:flex-start; padding:10px 16px 0; flex-wrap:wrap; }
   .video-wrap, .plot-wrap { position:relative; width:__BOX_W__px; height:__BOX_H__px; }
-  /* 3D pane interactive, no border */
-  .plot-wrap, #plot3d { pointer-events: auto; }
+  .plot-wrap, #plot3d { pointer-events:auto; }
   .plot-wrap { border:none; border-radius:0; box-sizing:border-box; background:transparent; }
+  .plot-col { display:flex; flex-direction:column; align-items:center; }
+  .plot-controls { display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
+  .btn { padding:6px 12px; border-radius:6px; border:2px solid #2ecc71; background:#f8f8f8; cursor:pointer; }
+  .btn-mini { padding:6px 10px; }
   video#vid { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; left:-9999px; top:-9999px; }
   .stage { position:relative; width:100%; height:100%; background:transparent; }
   canvas#view, canvas#overlay { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   #plot3d { width:100%; height:100%; }
   #plot3d .gl-container canvas, #plot3d .draglayer, #plot3d .nsewdrag { pointer-events:auto !important; }
-  /* Page-wide centered toolbar */
   .toolbar-page { width:100%; display:flex; justify-content:center; }
   .toolbar { margin:16px 0 24px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; white-space:nowrap; }
-  .btn { padding:6px 12px; border-radius:6px; border:2px solid #2ecc71; background:#f8f8f8; cursor:pointer; }
   .seek { width:280px; accent-color:#2ecc71; }
   .time { font:12px/1.2 monospace; color:#333; }
 </style>
@@ -3213,6 +3241,7 @@ def write_video_overlay_html(
       <button id="playBtn" class="btn">Play</button>
       <input id="seek" class="seek" type="range" min="0" max="0" step="0.01" value="0"/>
       <span id="time" class="time">0:00 / 0:00</span>
+      __VIEW_BTNS__  <!-- now empty -->
       __RECT_BTN____LAND_BTN____BLUR_BTN____HIDE_BTN____EXPORT_BTN__
     </div>
   </div>
@@ -3226,14 +3255,30 @@ __PLOTLY_TAG__
   const RECT_CHUNK_STARTS = __RECT_CHUNK_STARTS__;
   const LAND_CHUNK_STARTS = __LAND_CHUNK_STARTS__;
   const CAN3D_CHUNK_STARTS = __CAN3D_CHUNK_STARTS__;
+  const POSE_CHUNK_STARTS  = __POSE_CHUNK_STARTS__;
   const CUSHION = __CUSHION__;
   const BOX_W = __BOX_W__;
   const BOX_H = __BOX_H__;
+  const POSE_UNITS = "__POSE_UNITS__";
   const rectsByFrame = __RECTS_JSON__;
   const landsByFrame = __LANDS_JSON__;
   const can3dByFrame = __CAN3D_JSON__;
-  const loadedRectChunks = new Set(), loadedLandChunks = new Set(), loadedCan3dChunks = new Set();
-  const pendingRectChunks = new Set(), pendingLandChunks = new Set(), pendingCan3dChunks = new Set();
+  const poseByFrame  = __POSE_JSON__;
+  const loadedRectChunks = new Set(), loadedLandChunks = new Set(), loadedCan3dChunks = new Set(), loadedPoseChunks = new Set();
+  const pendingRectChunks = new Set(), pendingLandChunks = new Set(), pendingCan3dChunks = new Set(), pendingPoseChunks = new Set();
+
+  // Axis colors
+  const AX_X = 'rgb(31,119,180)';  // pitch (X) - blue
+  const AX_Y = 'rgb(255,127,14)';  // yaw (Y)   - orange
+  const AX_Z = 'rgb(44,160,44)';   // roll (Z)  - green
+
+  // Camera presets + mode
+  const CAM_ISO   = { eye:{x:1.35, y:1.35, z:1.35}, up:{x:0, y:1, z:0} };
+  const CAM_FRONT = { eye:{x:0.001, y:0.001, z:2.2}, up:{x:0, y:1, z:0} };
+  const CAM_LEFT  = { eye:{x:2.2,  y:0.0,   z:0.001}, up:{x:0, y:1, z:0} };
+  const CAM_TOP   = { eye:{x:0.0,  y:2.2,   z:0.001}, up:{x:0, y:0, z:-1} };
+
+  function clone(o){ try { return JSON.parse(JSON.stringify(o)); } catch(_) { return o; } }
 
   function chunkStartFor(f){
     if(!CHUNK_SIZE||CHUNK_SIZE<=0) return 0;
@@ -3242,13 +3287,14 @@ __PLOTLY_TAG__
   function registerRectsChunk(start,data){try{Object.assign(rectsByFrame,data||{});loadedRectChunks.add(start);pendingRectChunks.delete(start);}catch(e){}}
   function registerLandsChunk(start,data){try{Object.assign(landsByFrame,data||{});loadedLandChunks.add(start);pendingLandChunks.delete(start);}catch(e){}}
   function registerCan3dChunk(start,data){try{Object.assign(can3dByFrame,data||{});loadedCan3dChunks.add(start);pendingCan3dChunks.delete(start);}catch(e){}}
+  function registerPoseChunk(start,data){try{Object.assign(poseByFrame,data||{});loadedPoseChunks.add(start);pendingPoseChunks.delete(start);}catch(e){}}
 
   function loadChunk(p,start){
     if(!USE_CHUNKS) return;
     if(!CHUNK_SIZE||CHUNK_SIZE<=0) return;
-    const starts = p==='rects'?RECT_CHUNK_STARTS : p==='lands'?LAND_CHUNK_STARTS : CAN3D_CHUNK_STARTS;
-    const loaded = p==='rects'?loadedRectChunks : p==='lands'?loadedLandChunks : loadedCan3dChunks;
-    const pending= p==='rects'?pendingRectChunks: p==='lands'?pendingLandChunks: pendingCan3dChunks;
+    const starts = p==='rects'?RECT_CHUNK_STARTS : p==='lands'?LAND_CHUNK_STARTS : p==='can3d'?CAN3D_CHUNK_STARTS : POSE_CHUNK_STARTS;
+    const loaded = p==='rects'?loadedRectChunks : p==='lands'?loadedLandChunks : p==='can3d'?loadedCan3dChunks : loadedPoseChunks;
+    const pending= p==='rects'?pendingRectChunks: p==='lands'?pendingLandChunks: p==='can3d'?pendingCan3dChunks : pendingPoseChunks;
     if(!starts.includes(start)||loaded.has(start)||pending.has(start)) return;
     pending.add(start);
     const s=document.createElement('script');
@@ -3260,7 +3306,7 @@ __PLOTLY_TAG__
   function ensureChunksForFrame(f){
     if(!USE_CHUNKS) return;
     const st=chunkStartFor(f);
-    for(const p of ['rects','lands','can3d']){
+    for(const p of ['rects','lands','can3d','pose']){
       loadChunk(p,st); loadChunk(p,st+CHUNK_SIZE);
       if(st-CHUNK_SIZE>=0) loadChunk(p,st-CHUNK_SIZE);
     }
@@ -3273,7 +3319,14 @@ __PLOTLY_TAG__
   const rectBtn=document.getElementById('rectBtn'), landBtn=document.getElementById('landBtn');
   const blurBtn=document.getElementById('blurBtn'), hideBtn=document.getElementById('hideBtn');
   const exportBtn=document.getElementById('exportBtn');
-  const HAS_RECTS=__HAS_RECTS__, HAS_LANDS=__HAS_LANDS__, HAS_CAN3D=__HAS_CAN3D__;
+
+  // Buttons under 3D pane
+  const isoBtn=document.getElementById('isoBtn'), frontBtn=document.getElementById('frontBtn'),
+        leftBtn=document.getElementById('leftBtn'), topBtn=document.getElementById('topBtn'),
+        followBtn=document.getElementById('followBtn');
+
+  const HAS_RECTS=__HAS_RECTS__, HAS_LANDS=__HAS_LANDS__, HAS_CAN3D=__HAS_CAN3D__, HAS_POSE=__HAS_POSE__;
+  const HAS_3D = HAS_CAN3D || HAS_POSE;
   let showRects=HAS_RECTS, showLands=HAS_LANDS;
   let enableBlur=false, enableHide=false; // hide wins over blur
   let lastCrop=null;
@@ -3299,7 +3352,7 @@ __PLOTLY_TAG__
     const dpr=window.devicePixelRatio||1;
     for(const c of [view,overlay]){c.style.width=BOX_W+'px';c.style.height=BOX_H+'px';c.width=Math.round(BOX_W*dpr);c.height=Math.round(BOX_H*dpr);}
     vctx.setTransform(dpr,0,0,dpr,0,0);octx.setTransform(dpr,0,0,dpr,0,0);
-    if(plotDiv && HAS_CAN3D){ try{Plotly.Plots.resize(plotDiv);}catch(_){/* no-op */} }
+    if(plotDiv && HAS_3D){ try{Plotly.Plots.resize(plotDiv);}catch(_){/* no-op */} }
   }
 
   function cropBoxFromLandmarks(points,vw,vh){
@@ -3329,23 +3382,40 @@ __PLOTLY_TAG__
 
   function ensureAndGetDataFor(frame){
     if(USE_CHUNKS)ensureChunksForFrame(frame);
-    return {lands:landsByFrame[frame]||null,rects:rectsByFrame[frame]||null,can3d:can3dByFrame[frame]||null};
+    return {lands:landsByFrame[frame]||null,rects:rectsByFrame[frame]||null,can3d:can3dByFrame[frame]||null,pose:poseByFrame[frame]||null};
   }
 
   // ---- 3D setup (Plotly) ----
   const plotDiv = document.getElementById('plot3d');
-  // Frontal view by default
-  let camera = { eye:{x:0, y:0, z:2.5}, up:{x:0, y:1, z:0} };
+  let camera = clone(CAM_ISO);   // avoid ES6 shorthand issues
 
   function init3d(){
-    if(!HAS_CAN3D || !plotDiv) return;
+    if(!HAS_3D || !plotDiv) return;
 
-    const data = [{
-      type: 'scatter3d',
-      mode: 'markers',
-      x: [0], y: [0], z: [0],
-      marker: { size: 3 }
-    }];
+    let data;
+    if (HAS_CAN3D) {
+      data = [{
+        type: 'scatter3d',
+        mode: 'markers',
+        x: [0], y: [0], z: [0],
+        marker: { size: 3 }
+      }];
+    } else { // HAS_POSE
+      // 0..2: axes lines; 3..5: cones; 6..8: labels
+      data = [
+        {type:'scatter3d', mode:'lines', x:[0,1], y:[0,0], z:[0,0], line:{width:6, color:AX_X}, showlegend:false},
+        {type:'scatter3d', mode:'lines', x:[0,0], y:[0,1], z:[0,0], line:{width:6, color:AX_Y}, showlegend:false},
+        {type:'scatter3d', mode:'lines', x:[0,0], y:[0,0], z:[0,1], line:{width:6, color:AX_Z}, showlegend:false},
+
+        {type:'cone', x:[1], y:[0], z:[0], u:[-1], v:[0],  w:[0],  anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_X],[1,AX_X]]},
+        {type:'cone', x:[0], y:[1], z:[0], u:[0],  v:[-1], w:[0],  anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_Y],[1,AX_Y]]},
+        {type:'cone', x:[0], y:[0], z:[1], u:[0],  v:[0],  w:[-1], anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_Z],[1,AX_Z]]},
+
+        {type:'scatter3d', mode:'text', x:[1.08], y:[0],    z:[0],    text:['pitch (X)'], textfont:{size:12, color:'#333'}, showlegend:false},
+        {type:'scatter3d', mode:'text', x:[0],    y:[1.08], z:[0],    text:['yaw (Y)'],   textfont:{size:12, color:'#333'}, showlegend:false},
+        {type:'scatter3d', mode:'text', x:[0],    y:[0],    z:[1.08], text:['roll (Z)'],  textfont:{size:12, color:'#333'}, showlegend:false},
+      ];
+    }
 
     const layout = {
       margin:{l:0,r:0,t:0,b:0},
@@ -3371,28 +3441,124 @@ __PLOTLY_TAG__
     plotDiv.on('plotly_relayout', (e) => { if (e && e['scene.camera']) camera = e['scene.camera']; });
   }
 
+  function toRad(a){ return POSE_UNITS==='deg' ? (a*Math.PI/180.0) : a; }
+
+  // Euler order: XYZ (Rx then Ry then Rz)
+  function eulerToRot(rx,ry,rz){
+    const cx=Math.cos(rx), sx=Math.sin(rx);
+    const cy=Math.cos(ry), sy=Math.sin(ry);
+    const cz=Math.cos(rz), sz=Math.sin(rz);
+    const Rx = [[1,0,0],[0,cx,-sx],[0,sx,cx]];
+    const Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]];
+    const Rz = [[cz,-sz,0],[sz,cz,0],[0,0,1]];
+    function matMul(A,B){
+      return [
+        [A[0][0]*B[0][0]+A[0][1]*B[1][0]+A[0][2]*B[2][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]+A[0][2]*B[2][1], A[0][0]*B[0][2]+A[0][1]*B[1][2]+A[0][2]*B[2][2]],
+        [A[1][0]*B[0][0]+A[1][1]*B[1][0]+A[1][2]*B[2][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]+A[1][2]*B[2][1], A[1][0]*B[0][2]+A[1][1]*B[1][2]+A[1][2]*B[2][2]],
+        [A[2][0]*B[0][0]+A[2][1]*B[1][0]+A[2][2]*B[2][0], A[2][0]*B[0][1]+A[2][1]*B[1][1]+A[2][2]*B[2][1], A[2][0]*B[0][2]+A[2][1]*B[1][2]+A[2][2]*B[2][2]],
+      ];
+    }
+    const Rxy = matMul(Ry,Rx);
+    return matMul(Rz,Rxy);
+  }
+  function applyR(R,v){
+    return [
+      R[0][0]*v[0] + R[0][1]*v[1] + R[0][2]*v[2],
+      R[1][0]*v[0] + R[1][1]*v[1] + R[1][2]*v[2],
+      R[2][0]*v[0] + R[2][1]*v[1] + R[2][2]*v[2],
+    ];
+  }
+
+  function cameraFollowFromR(R, dist=1.6){
+    const eye = applyR(R,[dist,dist,dist]);
+    const up  = applyR(R,[0,1,0]);
+    return {eye:{x:eye[0],y:eye[1],z:eye[2]}, up:{x:up[0],y:up[1],z:up[2]}};
+  }
+
+  function setCameraMode(mode){
+    if(!plotDiv) return;
+    if(mode==='iso')   { camera = clone(CAM_ISO); }
+    if(mode==='front') { camera = clone(CAM_FRONT); }
+    if(mode==='left')  { camera = clone(CAM_LEFT); }
+    if(mode==='top')   { camera = clone(CAM_TOP); }
+    if(mode!=='follow'){
+      try{ Plotly.relayout(plotDiv, {'scene.camera': camera}); }catch(_){}
+    }
+    window.__CAM_MODE__ = mode;
+  }
+
+  if(isoBtn)    isoBtn.addEventListener('click',  ()=>setCameraMode('iso'));
+  if(frontBtn)  frontBtn.addEventListener('click',()=>setCameraMode('front'));
+  if(leftBtn)   leftBtn.addEventListener('click', ()=>setCameraMode('left'));
+  if(topBtn)    topBtn.addEventListener('click',  ()=>setCameraMode('top'));
+  if(followBtn) followBtn.addEventListener('click',()=>setCameraMode('follow'));
+  window.__CAM_MODE__ = 'iso';
+
   function update3d(frame){
-    if(!HAS_CAN3D || !plotDiv) return;
-    const pts = can3dByFrame[frame];
-    if(!pts) return;
-    const x=[],y=[],z=[];
-    for(const p of pts){ x.push(p[0]||0); y.push(p[1]||0); z.push(p[2]||0); }
-    try { Plotly.restyle(plotDiv, {x:[x], y:[y], z:[z]}); } catch(_){}
+    if(!HAS_3D || !plotDiv) return;
+
+    if (HAS_CAN3D) {
+      const pts = can3dByFrame[frame];
+      if(!pts) return;
+      const x=[],y=[],z=[];
+      for(const p of pts){ x.push(p[0]||0); y.push(p[1]||0); z.push(p[2]||0); }
+      try { Plotly.restyle(plotDiv, {x:[x], y:[y], z:[z]}); } catch(_){}
+      return;
+    }
+
+    // Pose axes
+    const pose = poseByFrame[frame];
+    if(!pose || pose.length<3) return;
+    let rx = toRad(pose[0] || 0);  // pitch (X)
+    let ry = toRad(pose[1] || 0);  // yaw   (Y)
+    let rz = toRad(pose[2] || 0);  // roll  (Z)
+    // Axis convention to match video: invert yaw & roll
+    ry = -ry;
+    rz = -rz;
+
+    const R = eulerToRot(rx,ry,rz);
+    const L = 1.0;
+    const ex = applyR(R,[L,0,0]);
+    const ey = applyR(R,[0,L,0]);
+    const ez = applyR(R,[0,0,L]);
+    const lx = [ex[0]*1.08, ex[1]*1.08, ex[2]*1.08];
+    const ly = [ey[0]*1.08, ey[1]*1.08, ey[2]*1.08];
+    const lz = [ez[0]*1.08, ez[1]*1.08, ez[2]*1.08];
+
+    try {
+      // lines
+      Plotly.restyle(plotDiv, {x:[[0,ex[0]]], y:[[0,ex[1]]], z:[[0,ex[2]]], 'line.color':AX_X}, [0]);
+      Plotly.restyle(plotDiv, {x:[[0,ey[0]]], y:[[0,ey[1]]], z:[[0,ey[2]]], 'line.color':AX_Y}, [1]);
+      Plotly.restyle(plotDiv, {x:[[0,ez[0]]], y:[[0,ez[1]]], z:[[0,ez[2]]], 'line.color':AX_Z}, [2]);
+
+      // cones (arrowheads at axis tips, pointing back to origin)
+      Plotly.restyle(plotDiv, {x:[[ex[0]]], y:[[ex[1]]], z:[[ex[2]]], u:[[-ex[0]]], v:[[-ex[1]]], w:[[-ex[2]]]}, [3]);
+      Plotly.restyle(plotDiv, {x:[[ey[0]]], y:[[ey[1]]], z:[[ey[2]]], u:[[-ey[0]]], v:[[-ey[1]]], w:[[-ey[2]]]}, [4]);
+      Plotly.restyle(plotDiv, {x:[[ez[0]]], y:[[ez[1]]], z:[[ez[2]]], u:[[-ez[0]]], v:[[-ez[1]]], w:[[-ez[2]]]}, [5]);
+
+      // labels at 1.08 * axis end
+      Plotly.restyle(plotDiv, {x:[[lx[0]]], y:[[lx[1]]], z:[[lx[2]]]}, [6]);
+      Plotly.restyle(plotDiv, {x:[[ly[0]]], y:[[ly[1]]], z:[[ly[2]]]}, [7]);
+      Plotly.restyle(plotDiv, {x:[[lz[0]]], y:[[lz[1]]], z:[[lz[2]]]}, [8]);
+    } catch(_){}
+
+    if (window.__CAM_MODE__ === 'follow') {
+      const cam = cameraFollowFromR(R, 1.6);
+      camera = cam;
+      try { Plotly.relayout(plotDiv, {'scene.camera': cam}); } catch(_){}
+    }
   }
 
   // ---- Export (single PNG: title + left pane + right 3D) ----
   if (exportBtn) exportBtn.addEventListener('click', () => { exportComposite().catch(()=>{}); });
 
   async function exportComposite(){
-    // Prefer injected title to avoid DOM/webfont timing issues
     let titleText = (typeof window.__EXPORT_TITLE__ === 'string' && window.__EXPORT_TITLE__.trim())
         ? window.__EXPORT_TITLE__.trim()
         : ((document.querySelector('h2.title')?.textContent || '').trim());
 
-    // Ensure fonts are ready (best-effort)
     try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_) {}
 
-    // Left pane = base + overlays (already rendered to canvases)
     const left = document.createElement('canvas');
     left.width  = view.width;
     left.height = view.height;
@@ -3400,9 +3566,8 @@ __PLOTLY_TAG__
     lctx.drawImage(view, 0, 0);
     lctx.drawImage(overlay, 0, 0);
 
-    // Right pane = Plotly to PNG, if present
     let rightImg = null;
-    if (HAS_CAN3D && typeof Plotly !== 'undefined' && plotDiv) {
+    if (HAS_3D && typeof Plotly !== 'undefined' && plotDiv) {
       const dpr = window.devicePixelRatio || 1;
       const w = Math.max(1, Math.round(plotDiv.clientWidth  * dpr));
       const h = Math.max(1, Math.round(plotDiv.clientHeight * dpr));
@@ -3412,7 +3577,6 @@ __PLOTLY_TAG__
       } catch(_) {}
     }
 
-    // Layout with title
     const dpr = window.devicePixelRatio || 1;
     const GAP_X = Math.round(24 * dpr);
     const PAD_X = Math.round(24 * dpr);
@@ -3432,21 +3596,17 @@ __PLOTLY_TAG__
     out.width = outW; out.height = outH;
     const octx = out.getContext('2d');
 
-    // white background
     octx.fillStyle = '#fff';
     octx.fillRect(0, 0, outW, outH);
 
-    // title
     if (titleText) {
       octx.fillStyle = '#111';
       octx.textAlign = 'center';
       octx.textBaseline = 'top';
-      // Use a system font stack to avoid CORS issues with webfonts
       octx.font = `${titleSize}px Helvetica, Arial, sans-serif`;
       octx.fillText(titleText, outW/2, PAD_Y);
     }
 
-    // panes
     const contentTop = PAD_Y + titleH;
     const leftY = contentTop + Math.floor((contentH - left.height) / 2);
     octx.drawImage(left, PAD_X, leftY);
@@ -3457,7 +3617,6 @@ __PLOTLY_TAG__
       octx.drawImage(rightImg, rightX, rightY);
     }
 
-    // download
     const a = document.createElement('a');
     a.href = out.toDataURL('image/png');
     a.download = 'video_3d_with_title.png';
@@ -3500,7 +3659,7 @@ __PLOTLY_TAG__
     if (enableHide) {
       vctx.save();
       vctx.globalAlpha = 1;
-      vctx.fillStyle = '#fff';      // white background when hidden
+      vctx.fillStyle = '#fff';
       vctx.fillRect(0, 0, targetW, targetH);
       vctx.restore();
     } else if (enableBlur) {
@@ -3526,11 +3685,11 @@ __PLOTLY_TAG__
       }
     }
 
-    if (HAS_CAN3D) { update3d(frame); }
+    if (HAS_3D) { update3d(frame); }
     requestAnimationFrame(draw);
   }
 
-  // Keys: space play/pause, r rects, l lands, b blur, h hide, e export
+  // Keys: space play/pause, r rects, l lands, b blur, h hide, e export, i/f/l/t/o views
   window.addEventListener('keydown',e=>{
     const k=(e.key||'').toLowerCase();
     if(k===' '){e.preventDefault();vid.paused?vid.play():vid.pause();}
@@ -3539,13 +3698,18 @@ __PLOTLY_TAG__
     else if(k==='b'){enableBlur=!enableBlur; if(enableBlur) enableHide=false; updateBtns();}
     else if(k==='h'){enableHide=!enableHide; if(enableHide) enableBlur=false; updateBtns();}
     else if(k==='e'){exportComposite().catch(()=>{});}
+    else if(k==='i'){setCameraMode('iso');}
+    else if(k==='f'){setCameraMode('front');}
+    else if(k==='o'){setCameraMode('follow');}
+    else if(k==='t'){setCameraMode('top');}
+    else if(k==='k'){setCameraMode('left');}
   });
 
   vid.addEventListener('loadedmetadata',()=>{
     if(FPS>0 && isFinite(FPS)) { try { seek.step=(1.0/Number(FPS)).toFixed(3); } catch(_){} }
     try{ vid.play().catch(()=>{}); }catch(_){}
     resizeCanvases(); updateBtns();
-    if(HAS_CAN3D) init3d();
+    if(HAS_3D) init3d();
     if(USE_CHUNKS) ensureChunksForFrame(0);
     requestAnimationFrame(draw);
     requestAnimationFrame(tickUI);
@@ -3565,8 +3729,22 @@ __PLOTLY_TAG__
         blur_btn   = "<button id='blurBtn' class='btn'>Blur Face: Off</button>"
         hide_btn   = "<button id='hideBtn' class='btn'>Hide Face: Off</button>"
         export_btn = "<button id='exportBtn' class='btn'>Export PNG</button>"
-        plot_wrap  = "<div class='plot-wrap'><div id='plot3d'></div></div>" if has_can3d else ""
-        plotly_tag = "<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>" if has_can3d else ""
+
+        # Right column: plot + view buttons beneath
+        plot_wrap  = (
+            "<div class='plot-col' style='width:__BOX_W__px'>"
+            "  <div class='plot-wrap'><div id='plot3d'></div></div>"
+            "  <div class='plot-controls'>"
+            "    <button id='isoBtn' class='btn btn-mini'>ISO</button>"
+            "    <button id='frontBtn' class='btn btn-mini'>Front</button>"
+            "    <button id='leftBtn' class='btn btn-mini'>Left</button>"
+            "    <button id='topBtn' class='btn btn-mini'>Top</button>"
+            "    <button id='followBtn' class='btn btn-mini'>Follow</button>"
+            "  </div>"
+            "</div>"
+        ) if has_3d else ""
+
+        plotly_tag = "<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>" if has_3d else ""
 
         return (
             html_base
@@ -3580,13 +3758,17 @@ __PLOTLY_TAG__
             .replace("__RECT_CHUNK_STARTS__", json.dumps(rect_chunk_starts))
             .replace("__LAND_CHUNK_STARTS__", json.dumps(land_chunk_starts))
             .replace("__CAN3D_CHUNK_STARTS__", json.dumps(can3d_chunk_starts))
+            .replace("__POSE_CHUNK_STARTS__", json.dumps(pose_chunk_starts))
             .replace("__CUSHION__", f"{float(cushion_ratio):.6f}")
             .replace("__RECTS_JSON__", rects_json)
             .replace("__LANDS_JSON__", lands_json)
             .replace("__CAN3D_JSON__", can3d_json)
+            .replace("__POSE_JSON__", pose_json)
             .replace("__HAS_RECTS__", str(has_rects).lower())
             .replace("__HAS_LANDS__", str(has_lands).lower())
             .replace("__HAS_CAN3D__", str(has_can3d).lower())
+            .replace("__HAS_POSE__", str(has_pose).lower())
+            .replace("__POSE_UNITS__", "deg" if str(pose_units).lower().startswith("d") else "rad")
             .replace("__RECT_BTN__", rect_btn)
             .replace("__LAND_BTN__", land_btn)
             .replace("__BLUR_BTN__", blur_btn)
@@ -3594,6 +3776,7 @@ __PLOTLY_TAG__
             .replace("__EXPORT_BTN__", export_btn)
             .replace("__PLOT_WRAP__", plot_wrap)
             .replace("__PLOTLY_TAG__", plotly_tag)
+            .replace("__VIEW_BTNS__", view_btns)
         )
 
     html = _build_html(portrait_w, portrait_h) if fixed_portrait else _build_html(TS_W, TS_H)

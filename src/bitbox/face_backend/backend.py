@@ -487,6 +487,7 @@ class FaceProcessor:
                 video_path=video_path,
                 out_dir=out_dir,
                 overlay=overlay,
+                video=video,
             )
 
         raise ValueError(f"Unknown data type: {getattr(data, 'get', lambda *_: None)('type')!r}. Expected 'rectangle', 'landmark', 'landmark-can', 'expression', or 'pose'.")
