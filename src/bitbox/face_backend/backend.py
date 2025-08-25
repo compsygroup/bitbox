@@ -431,7 +431,6 @@ class FaceProcessor:
         overlay_land, overlay_rect = _parse_overlay(overlay)
 
         if check_data_type(data, 'rectangle'):
-            # Primary is rectangles; optional overlay can be landmarks (from overlay list/dict)
             return visualize_and_export(
                 rects=data,
                 num_frames=num_frames,
@@ -446,7 +445,6 @@ class FaceProcessor:
             )
 
         if check_data_type(data, 'landmark'):
-            # Primary is landmarks; rectangles can come from overlay list/dict
             rects_src = overlay_rect if overlay_rect is not None else None
             return visualize_and_export(
                 rects=rects_src,
@@ -461,7 +459,6 @@ class FaceProcessor:
             )
         
         if check_data_type(data, 'landmark-can'):
-            # Special case for canonical landmarks; this function already supports overlay list/dict
             return visualize_and_export_can_land(
                 num_frames=num_frames,
                 out_dir=out_dir,
@@ -469,23 +466,21 @@ class FaceProcessor:
                 land_can=data,
                 pose=pose,
                 overlay=overlay,
+                video=video,
             )
 
         if check_data_type(data, 'expression'):
-            # Special case for expressions; forward overlay (list or dict) to enable cropping + overlays
             return visualize_expressions_3d(
                 expressions=data,
                 out_dir=out_dir,
                 video_path=video_path,
                 smooth=0,
-                normalize=None,
                 downsample=1,
                 play_fps=5,
                 overlay=overlay,
             )
 
         if check_data_type(data, 'pose'):
-            # Special case for pose; forward overlay (list or dict) to enable cropping + overlays
             return visualize_and_export_pose(
                 pose=data,
                 num_frames=num_frames,
