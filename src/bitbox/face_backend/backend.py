@@ -399,7 +399,7 @@ class FaceProcessor:
             raise ValueError("Failed running %s" % name)
         
     def plot(self, data: dict, random_seed: int = 42, num_frames: int = 5, overlay: Optional[list] = None, 
-             pose: Optional[dict] = None, video: bool = False,):
+             pose: Optional[dict] = None, video: bool = False, frames: Optional[List[int]] = None):
 
         # helpers to parse overlay variants (list or dict) into landmark/rectangle pieces
         def _parse_overlay(ov) -> tuple:
@@ -441,6 +441,7 @@ class FaceProcessor:
                 overlay=overlay_land,   # pass only landmark overlay here
                 pose=pose,
                 video=video,
+                frames=frames,
                 
             )
 
@@ -456,6 +457,7 @@ class FaceProcessor:
                 overlay=data,   # landmarks become the overlay
                 pose=pose,
                 video=video,
+                frames=frames,
             )
         
         if check_data_type(data, 'landmark-can'):
@@ -467,6 +469,7 @@ class FaceProcessor:
                 pose=pose,
                 overlay=overlay,
                 video=video,
+                frames=frames,
             )
 
         if check_data_type(data, 'expression'):
@@ -488,6 +491,7 @@ class FaceProcessor:
                 out_dir=out_dir,
                 overlay=overlay,
                 video=video,
+                frames=frames,
             )
 
         raise ValueError(f"Unknown data type: {getattr(data, 'get', lambda *_: None)('type')!r}. Expected 'rectangle', 'landmark', 'landmark-can', 'expression', or 'pose'.")
