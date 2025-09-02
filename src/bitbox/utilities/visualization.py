@@ -3148,6 +3148,19 @@ def visualize_expressions_3d(
         out_path = out_dir if out_dir.endswith(".html") else os.path.join(out_dir, "bitbox_viz.html")
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
+        fps = 30.0
+        vw = vh = None
+        try:
+            cap = cv2.VideoCapture(video_path)
+            f = cap.get(cv2.CAP_PROP_FPS)
+            if f and f > 1e-3:
+                fps = float(f)
+            vw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or None
+            vh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or None
+            cap.release()
+        except Exception:
+            pass
+
         # Use the extended writer (expressions take priority only if can3d/pose not supplied)
         write_video_overlay_html(
             video_src=video_path,
@@ -3157,16 +3170,14 @@ def visualize_expressions_3d(
             can3d_map=None,
             pose_euler_map=None,
             pose_units="rad",
-            fps=float(play_fps),  # keep the UI in step with your play_fps knob
-            video_w=target_size[0],
-            video_h=target_size[1],
+            fps=fps,  
+            video_w=vw,
+            video_h=vh,
             title=title,
             cushion_ratio=float(cushion_ratio),
             fixed_portrait=True,
-            portrait_w=int(target_size[0]),
-            portrait_h=int(target_size[1]),
             can3d_decimate=1,
-            expressions=df,                 # << NEW
+            expressions=df,
             expr_smooth=int(smooth or 0),
             expr_downsample=int(downsample or 1),
             expr_max_frames=int(max_frames or 360),
@@ -3335,8 +3346,6 @@ def write_video_overlay_html(
     portrait_w: int = 360,
     portrait_h: int = 480,
     can3d_decimate: int = 1,               # keep every k-th point (perf)
-
-    # NEW: expressions pane (right) — progressive 3D polylines + moving marker
     expressions: Optional[Union["pd.DataFrame", dict]] = None,
     expr_smooth: int = 0,                  # 0/1 disables; rolling window if >=2
     expr_downsample: int = 1,              # keep every k-th frame for expressions
@@ -3576,13 +3585,22 @@ def write_video_overlay_html(
 <style>
   body { margin:0; background:#fff; font-family:Roboto, Helvetica, Arial, sans-serif; color:#111; display:flex; flex-direction:column; align-items:center; }
   h2.title { margin:40px 0 14px; font-weight:400; font-size:20px; text-align:center; }
-  .container { display:flex; gap:24px; justify-content:center; align-items:flex-start; padding:10px 16px 0; flex-wrap:wrap; }
-  .video-wrap, .plot-wrap { position:relative; width:__BOX_W__px; height:__BOX_H__px; }
+  .container { display:flex; gap:24px; justify-content:center; align-items:flex-start; padding:10px 16px 0; flex-wrap:wrap; }   
+  .video-wrap {
+    position:relative;
+    width:__BOX_W__px;
+    height:__BOX_H__px;
+    flex: 0 0 __BOX_W__px;      /* <- prevents initial flex shrink */
+  }
+  .plot-wrap  { position:relative; width:100%;      height:__BOX_H__px; }
   /* Interactivity + layering for Plotly */
   .plot-wrap { border:none; border-radius:0; box-sizing:border-box; background:transparent; position:relative; z-index:2; }
   #plot3d { width:100%; height:100%; pointer-events:auto; touch-action: none; }
   #plot3d .gl-container canvas, #plot3d .draglayer, #plot3d .nsewdrag { pointer-events:auto !important; }
-  .plot-col { display:flex; flex-direction:column; align-items:center; }
+  .plot-col { display:flex; flex-direction:column; align-items:center;    
+   flex: 1 1 auto;           
+   min-width: __PLOT_W__px;  
+   }
   .plot-controls { display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
   .btn { padding:6px 12px; border-radius:6px; border:2px solid #2ecc71; background:#f8f8f8; cursor:pointer; }
   .btn-mini { padding:6px 10px; }
@@ -3703,13 +3721,30 @@ __PLOTLY_TAG__
   let enableBlur=false, enableHide=false; // hide wins over blur
   let lastCrop=null;
 
-  function updateBtns(){
-    if(rectBtn){rectBtn.textContent='Rectangles: '+(showRects?'On':'Off');rectBtn.style.borderColor=showRects?'#2ecc71':'#999';}
-    if(landBtn){landBtn.textContent='Landmarks: '+(showLands?'On':'Off');landBtn.style.borderColor=showLands?'#2ecc71':'#999';}
-    if(blurBtn){blurBtn.textContent='Blur Face: '+(enableBlur?'On':'Off');blurBtn.style.borderColor=enableBlur?'#2ecc71':'#999';}
-    if(hideBtn){hideBtn.textContent='Hide Face: '+(enableHide?'On':'Off');hideBtn.style.borderColor=enableHide?'#2ecc71':'#999';}
-    playBtn.textContent=vid.paused?'Play':'Pause';
-  }
+  // --- Button labels show the ACTION (opposite of current state) ---
+    function updateBtns(){
+    if(rectBtn){
+        rectBtn.textContent = 'Rectangles: ' + (showRects ? 'Off' : 'On');
+        rectBtn.style.borderColor = showRects ? '#2ecc71' : '#999';
+    }
+    if(landBtn){
+        landBtn.textContent = 'Landmarks: ' + (showLands ? 'Off' : 'On');
+        landBtn.style.borderColor = showLands ? '#2ecc71' : '#999';
+    }
+    if(blurBtn){
+        // action label: if blurred -> "Unblur Face", else "Blur Face"
+        blurBtn.textContent = enableBlur ? 'Unblur Face' : 'Blur Face';
+        blurBtn.style.borderColor = enableBlur ? '#2ecc71' : '#999';
+    }
+    if(hideBtn){
+        // action label: if hidden -> "Show Face", else "Hide Face"
+        hideBtn.textContent = enableHide ? 'Show Face' : 'Hide Face';
+        hideBtn.style.borderColor = enableHide ? '#2ecc71' : '#999';
+    }
+    // play/pause shows action too
+    playBtn.textContent = vid.paused ? 'Play' : 'Pause';
+    }
+
   if(rectBtn)rectBtn.addEventListener('click',()=>{showRects=!showRects;updateBtns();});
   if(landBtn)landBtn.addEventListener('click',()=>{showLands=!showLands;updateBtns();});
   if(blurBtn)blurBtn.addEventListener('click',()=>{enableBlur=!enableBlur; if(enableBlur) enableHide=false; updateBtns();});
@@ -3718,7 +3753,7 @@ __PLOTLY_TAG__
   playBtn.addEventListener('click',()=>{vid.paused?vid.play():vid.pause();});
   seek.addEventListener('input',()=>{vid.currentTime=parseFloat(seek.value)||0;});
   function fmt(t){if(!isFinite(t))return'0:00';const m=Math.floor(t/60);const s=Math.floor(t%60).toString().padStart(2,'0');return m+':'+s;}
-  function tickUI(){if(vid.readyState>=1){seek.max=vid.duration||seek.max;seek.value=vid.currentTime||0;timeLbl.textContent=`${fmt(vid.currentTime)} / ${fmt(vid.duration)}`;}requestAnimationFrame(tickUI);}
+  function tickUI(){if(vid.readyState>=1){seek.max=vid.duration||seek.max;seek.value=vid.currentTime||0;timeLbl.textContent=`${fmt(vid.currentTime)} / ${fmt(vid.duration)}`;updateBtns();}requestAnimationFrame(tickUI);}
 
   function resizeCanvases(){
     const dpr=window.devicePixelRatio||1;
@@ -3759,7 +3794,8 @@ __PLOTLY_TAG__
 
   // ---- 3D setup (Plotly) ----
   const plotDiv = document.getElementById('plot3d');
-  let camera = clone(CAM_FRONT);   // default
+  let camera = HAS_EXPR ? { eye:{x:1.25, y:1.4, z:1.1}, up:{x:0, y:1, z:0} }
+                      : clone(CAM_FRONT);
   let userInteracting = false; 
 
   function toRad(a){ return POSE_UNITS==='deg' ? (a*Math.PI/180.0) : a; }
@@ -3848,40 +3884,77 @@ __PLOTLY_TAG__
     } else if (HAS_EXPR && EXPR && EXPR.ge_count>0) {
       const colorway = ["#636EFA","#EF553B","#00CC96","#AB63FA","#FFA15A","#19D3F3","#FF6692","#B6E880","#FF97FF","#FECB52"];
       data = [];
-      // progressive lines
+      // progressive lines: X=Frame, Y=Value (UP), Z=GE index (depth)
       for (let g=0; g<EXPR.ge_count; g++){
         data.push({
           type:'scatter3d',
           mode:'lines',
-          x:[0.0], y:[g], z:[EXPR.line_z_by_ge[g][0]],
+          x:[0.0],                          // Frame
+          y:[EXPR.line_z_by_ge[g][0]],      // Value  -> Y
+          z:[g],                            // GE idx -> Z
           line:{width:2, color:colorway[g % colorway.length]},
-          hovertemplate:`t=%{x}<br>${(EXPR.ge_cols && EXPR.ge_cols[g]) ? EXPR.ge_cols[g] : ('GE '+g)}: %{z}<extra></extra>`,
+          hovertemplate:`t=%{x}<br>${(EXPR.ge_cols && EXPR.ge_cols[g]) ? EXPR.ge_cols[g] : ('GE '+g)}: %{y}<extra></extra>`,
           showlegend:false
         });
       }
-      // moving marker row (one marker per GE at current frame)
+      // moving marker row at current frame across all GEs
       data.push({
         type:'scatter3d',
         mode:'markers',
-        x: new Array(EXPR.ge_count).fill(0),
-        y: [...Array(EXPR.ge_count).keys()],
-        z: EXPR.marker_z_by_frame[0],
+        x: new Array(EXPR.ge_count).fill(0),     // frame=0
+        y: EXPR.marker_z_by_frame[0],            // values -> Y
+        z: [...Array(EXPR.ge_count).keys()],     // GE idx  -> Z
         marker:{size:4, symbol:"circle"},
         showlegend:false
       });
     }
+    // Compute nice ranges for expressions so the plot fits
+    let rng = null;
+    if (HAS_EXPR && EXPR && EXPR.ge_count > 0) {
+      let ymin = Infinity, ymax = -Infinity;
+      for (let g = 0; g < EXPR.ge_count; g++) {
+        const arr = EXPR.line_z_by_ge[g] || [];
+        for (let i = 0; i < arr.length; i++) {
+          const v = arr[i];
+          if (v < ymin) ymin = v;
+          if (v > ymax) ymax = v;
+        }
+      }
+      if (!isFinite(ymin)) ymin = 0;
+      if (!isFinite(ymax)) ymax = 1;
+      const pad = (ymax - ymin) * 0.08;  // a little headroom
+      rng = {
+        xmin: 0,
+        xmax: (EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length - 1] : 0),
+        ymin: ymin - pad,
+        ymax: ymax + pad,
+        zmin: -0.5,
+        zmax: EXPR.ge_count - 0.5
+      };
+    }
 
     const layout = {
-    margin: {l:0, r:0, t:0, b:0},
-    scene: {
-        dragmode: 'orbit',
-        aspectmode: 'data',
-        camera: camera,
-        xaxis: {visible: false, showgrid: false, zeroline: false, showticklabels: false, showline: false},
-        yaxis: {visible: false, showgrid: false, zeroline: false, showticklabels: false, showline: false},
-        zaxis: {visible: false, showgrid: false, zeroline: false, showticklabels: false, showline: false}
-    }
-    };sx
+      margin:{l:0,r:0,t:0,b:0},
+      scene:{
+        dragmode:'orbit',
+        aspectmode: HAS_EXPR ? 'cube' : 'data',
+        camera: camera,                         // up: Y
+        xaxis: HAS_EXPR
+          ? { title:'Frame', showgrid:true, zeroline:false,
+              range: (rng ? [rng.xmin, rng.xmax] : undefined) }
+          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
+
+        yaxis: HAS_EXPR
+          ? { title:'Value', showgrid:true, zeroline:false,
+              range: (rng ? [rng.ymin, rng.ymax] : undefined) }
+          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
+
+        zaxis: HAS_EXPR
+          ? { title:(EXPR && EXPR.ge_cols ? 'GE' : 'GE Index'), showgrid:true, zeroline:false,
+              range: (rng ? [rng.zmin, rng.zmax] : undefined) }
+          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
+      }
+    };
 
     const config = {
       staticPlot: false,
@@ -3895,13 +3968,13 @@ __PLOTLY_TAG__
     Plotly.newPlot(plotDiv, data, layout, config);
 
     if (plotDiv && typeof plotDiv.on === 'function') {
-    // While user is dragging/rotating/panning, pause our restyles
-    plotDiv.on('plotly_relayouting', () => { userInteracting = true; });
-    plotDiv.on('plotly_relayout',     (e) => {
+      // While user is dragging/rotating/panning, pause our restyles
+      plotDiv.on('plotly_relayouting', () => { userInteracting = true; });
+      plotDiv.on('plotly_relayout',     (e) => {
         userInteracting = false;
         if (e && e['scene.camera']) camera = e['scene.camera']; // keep camera state
-    });
-    plotDiv.on('plotly_doubleclick',  () => { userInteracting = false; });
+      });
+      plotDiv.on('plotly_doubleclick',  () => { userInteracting = false; });
     }
 
     // Interactivity fix: ensure wheel/pinch events go to Plotly (bind AFTER newPlot)
@@ -3979,17 +4052,20 @@ __PLOTLY_TAG__
     if (HAS_EXPR && EXPR && EXPR.ge_count>0) {
       const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
       const idxs = []; for (let g=0; g<EXPR.ge_count; g++) idxs.push(g);
+
       const xs=[], ys=[], zs=[];
       for (let g=0; g<EXPR.ge_count; g++){
         const k = Math.min(t+1, EXPR.x_full.length);
-        xs.push(EXPR.x_full.slice(0,k));
-        ys.push(new Array(k).fill(EXPR.y_const[g]));
-        zs.push(EXPR.line_z_by_ge[g].slice(0,k));
+        xs.push(EXPR.x_full.slice(0,k));              // X = frames 0..t
+        ys.push(EXPR.line_z_by_ge[g].slice(0,k));     // Y = values (UP)
+        zs.push(new Array(k).fill(EXPR.y_const[g]));  // Z = GE index
       }
       try { Plotly.restyle(plotDiv, {x:xs, y:ys, z:zs}, idxs); } catch(_){}
-      const mx = new Array(EXPR.ge_count).fill(t);
-      const my = EXPR.y_const.slice();
-      const mz = (EXPR.marker_z_by_frame[t]||[]).slice();
+
+      // moving marker row at current frame
+      const mx = new Array(EXPR.ge_count).fill(t);        // X = current frame
+      const my = (EXPR.marker_z_by_frame[t]||[]).slice(); // Y = values
+      const mz = EXPR.y_const.slice();                    // Z = GE indices
       try { Plotly.restyle(plotDiv, {x:[mx], y:[my], z:[mz]}, [EXPR.ge_count]); } catch(_){}
     }
   }
@@ -4150,6 +4226,9 @@ __PLOTLY_TAG__
     if(USE_CHUNKS) ensureChunksForFrame(0);
     requestAnimationFrame(draw);
     requestAnimationFrame(tickUI);
+
+    resizeCanvases();
+    setTimeout(resizeCanvases, 0);
   }
 
   vid.addEventListener('loadedmetadata',()=>{
@@ -4159,33 +4238,39 @@ __PLOTLY_TAG__
   });
 
   window.addEventListener('resize',resizeCanvases);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) resizeCanvases();
+  });
 </script>
 </body></html>
 """
-        rect_btn   = "<button id='rectBtn' class='btn'>Rectangles: On</button>" if has_rects else ""
-        land_btn   = "<button id='landBtn' class='btn'>Landmarks: On</button>" if has_lands else ""
-        blur_btn   = "<button id='blurBtn' class='btn'>Blur Face: Off</button>"
-        hide_btn   = "<button id='hideBtn' class='btn'>Hide Face: Off</button>"
+        # Initial labels should also show the action (opposite of initial state)
+        rect_btn   = "<button id='rectBtn' class='btn'>Rectangles: Off</button>" if has_rects else ""
+        land_btn   = "<button id='landBtn' class='btn'>Landmarks: Off</button>" if has_lands else ""
+        blur_btn = "<button id='blurBtn' class='btn'>Blur Face</button>"
+        hide_btn = "<button id='hideBtn' class='btn'>Hide Face</button>"
         export_btn = "<button id='exportBtn' class='btn'>Export PNG</button>"
 
         # Right column: plot + (pose/can3d) view buttons beneath; hide buttons if expressions-only
         if has_3d_any:
             plot_wrap = (
-                "<div class='plot-col' style='width:__BOX_W__px'>"
-                "  <div class='plot-wrap'><div id='plot3d'></div></div>"
-                f"  <div class='plot-controls' style='display:{'none' if (has_expr and not (has_can3d or has_pose)) else 'flex'}'>"
-                "    <button id='isoBtn' class='btn btn-mini'>ISO</button>"
-                "    <button id='frontBtn' class='btn btn-mini'>Front</button>"
-                "    <button id='leftBtn' class='btn btn-mini'>Left</button>"
-                "    <button id='topBtn' class='btn btn-mini'>Top</button>"
-                "    <button id='followBtn' class='btn btn-mini'>Follow</button>"
-                "  </div>"
-                "</div>"
+            "<div class='plot-col' style='width:__PLOT_W__px'>"
+            "  <div class='plot-wrap'><div id='plot3d'></div></div>"
+            f"  <div class='plot-controls' style='display:{'none' if (has_expr and not (has_can3d or has_pose)) else 'flex'}'>"
+            "    <button id='isoBtn' class='btn btn-mini'>ISO</button>"
+            "    <button id='frontBtn' class='btn btn-mini'>Front</button>"
+            "    <button id='leftBtn' class='btn btn-mini'>Left</button>"
+            "    <button id='topBtn' class='btn btn-mini'>Top</button>"
+            "    <button id='followBtn' class='btn btn-mini'>Follow</button>"
+            "  </div>"
+            "</div>"
             )
             plotly_tag = "<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script>"
         else:
             plot_wrap = ""
             plotly_tag = ""
+
+        plot_w = int(box_w * 1.6) if (has_expr and not (has_can3d or has_pose)) else int(box_w)
 
         return (
             html_base
@@ -4218,6 +4303,7 @@ __PLOTLY_TAG__
             .replace("__HIDE_BTN__", hide_btn)
             .replace("__EXPORT_BTN__", export_btn)
             # Expressions switches/payload
+            .replace("__PLOT_W__", str(plot_w))
             .replace("__HAS_EXPR__", str(bool(has_expr)).lower())
             .replace("__EXPR_JSON__", _json.dumps(expr_payload if has_expr else {}))
         )
