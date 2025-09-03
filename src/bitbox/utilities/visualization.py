@@ -2274,797 +2274,6 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
 
-
-# -----------------------------------------------------------------------------
-# expressions visualization 
-# -----------------------------------------------------------------------------
-
-# def visualize_expressions_3d(
-#     expressions,
-#     out_dir: str = "bitbox_viz.html",
-#     title: str = "Global Expressions over Time (3D)",
-#     video_path: Optional[str] = None,   # optional: show frames alongside the plot
-#     smooth: int = 0,                    # rolling window; 0/1 disables
-#     downsample: int = 1,                # keep every k-th frame (set 10 to speed up)
-#     play_fps: int = 5,                  # toolbar playback speed
-#     max_frames: int = 360,              # cap for HTML weight
-#     target_size: Tuple[int, int] = (400, 300),  # (w, h) video frame size for display
-#     overlay: Optional[object] = None,   # NEW: can be list/dict with type 'landmark'/'rectangle'
-#     cushion_ratio: float = 0.35,        # NEW: crop cushion ratio
-# ):
-#     """Expressions-over-time 3D visualization with optional synchronized video.
-
-#     Left pane shows the current (cropped) frame and overlays; right pane shows 79 GE signals
-#     as progressive 3D polylines with a moving marker. Prev/Play/Next navigate both panes.
-#     """
-#     # ---------------------------- data prep ----------------------------
-#     def _to_df(obj: object) -> pd.DataFrame:
-#         if isinstance(obj, pd.DataFrame):
-#             return obj.copy()
-#         if isinstance(obj, dict) and isinstance(obj.get("data"), pd.DataFrame):
-#             return obj["data"].copy()
-#         raise ValueError("expressions must be a DataFrame or {'data': DataFrame}")
-
-#     df = _to_df(expressions)
-#     if df.empty:
-#         raise ValueError("expressions DataFrame is empty")
-
-#     # prefer GE* columns, else all numeric
-#     num_cols = [c for c in df.columns if np.issubdtype(df[c].dtype, np.number)]
-#     ge_cols = [c for c in num_cols if str(c).lower().startswith("ge")] or num_cols
-#     if not ge_cols:
-#         raise ValueError("No numeric (or GE*) columns found")
-
-#     df = df.sort_index()
-
-#     if isinstance(smooth, int) and smooth >= 2:
-#         df[ge_cols] = df[ge_cols].rolling(window=int(smooth), min_periods=1).mean()
-
-#     stride = int(max(1, downsample or 1))
-#     df_ds = df.iloc[::stride].copy()
-#     if len(df_ds) == 0:
-#         raise ValueError("No rows after downsampling")
-
-#     if len(df_ds) > max_frames:
-#         df_ds = df_ds.iloc[:max_frames]
-
-#     orig_indices = df_ds.index.to_numpy(dtype=int)       # original frame ids
-#     ge_vals = df_ds[ge_cols].to_numpy(dtype=float)       # (T, 79)
-#     n_frames, ge_count = ge_vals.shape
-#     x_full = np.arange(n_frames, dtype=float)
-#     z_by_ge = ge_vals.T                                  # (79, T)
-
-#     # ---------------------------- overlay parsing ----------------------
-#     def _safe_df(d: Optional[dict]):
-#         return d["data"] if isinstance(d, dict) and "data" in d else None
-
-#     def _dtype(d: Optional[dict]) -> Optional[str]:
-#         return d.get("type") if isinstance(d, dict) else None
-
-#     overlay_land = None
-#     overlay_rect = None
-#     blur_default = False
-
-#     if isinstance(overlay, list):
-#         for value in overlay:
-#             if isinstance(value, dict) and "type" in value:
-#                 if _dtype(value) == "landmark":
-#                     overlay_land = value
-#                 elif _dtype(value) == "rectangle":
-#                     overlay_rect = value
-#             elif isinstance(value, dict):
-#                 if bool(value.get("blur")) or (value.get("privacy") in (True, "blur", "on")):
-#                     blur_default = True
-#     elif isinstance(overlay, dict) and "type" in overlay:
-#         if _dtype(overlay) == "landmark":
-#             overlay_land = overlay
-#         elif _dtype(overlay) == "rectangle":
-#             overlay_rect = overlay
-#     elif isinstance(overlay, dict):
-#         if bool(overlay.get("blur")) or (overlay.get("privacy") in (True, "blur", "on")):
-#             blur_default = True
-
-#     overlay_land_df = _safe_df(overlay_land)
-#     overlay_rect_df = _safe_df(overlay_rect)
-#     overlay_present = (overlay_land_df is not None) or (overlay_rect_df is not None)
-
-
-
-#     # ---------------------------- figure ------------------------------
-#     has_video = bool(video_path and os.path.exists(video_path))
-#     if has_video:
-#         # equal widths so both panels feel the same size
-#         fig = make_subplots(
-#             rows=1, cols=2,
-#             specs=[[{"type": "xy"}, {"type": "scene"}]],
-#             column_widths=[0.50, 0.50],
-#             horizontal_spacing=0.06,
-#         )
-#         fig.update_layout(
-#             yaxis=dict(domain=[0, 0.8]),  # Align the video frame to the bottom
-#             scene=dict(domain=dict(y=[0.1, 0.9])),  # Center the 3D plot vertically within its subplot
-#         )
-#     else:
-#         fig = go.Figure()
-
-#     colorway = [
-#         "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
-#         "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
-#     ]
-
-#     # left: stacked Image traces (raw or cropped) + caption annotation beneath
-#     nav_trace_indices: List[int] = []
-#     caption_anno_index = -1
-
-#     # NEW: keep per-frame overlay indices to toggle with nav
-#     overlay_trace_indices_by_frame: List[List[int]] = []
-#     rect_shape_indices_by_frame: List[List[int]] = []
-
-#     if has_video:
-#         W, H = int(target_size[0]), int(target_size[1])
-#         if not overlay_present:
-#             # Legacy/raw mode: use base64 for robust browser display
-#             blank = np.zeros((H, W, 3), dtype=np.uint8)
-#             ok_b, buf_b = cv2.imencode(".jpg", blank, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-#             blank_uri = "data:image/jpeg;base64," + (base64.b64encode(buf_b).decode("ascii") if ok_b else "")
-
-#             cap = cv2.VideoCapture(video_path)
-#             try:
-#                 first = True
-#                 for fid in orig_indices:
-#                     cap.set(cv2.CAP_PROP_POS_FRAMES, int(fid))
-#                     ok, bgr = cap.read()
-#                     if not ok or bgr is None:
-#                         data_uri = blank_uri
-#                     else:
-#                         if (bgr.shape[1], bgr.shape[0]) != (W, H):
-#                             bgr = cv2.resize(bgr, (W, H), interpolation=cv2.INTER_AREA)
-#                         ok2, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-#                         data_uri = "data:image/jpeg;base64," + (base64.b64encode(buf).decode("ascii") if ok2 else "")
-#                     fig.add_trace(go.Image(source=data_uri, visible=True, opacity=1.0 if first else 0.0), row=1, col=1)
-#                     nav_trace_indices.append(len(fig.data) - 1)
-#                     overlay_trace_indices_by_frame.append([])
-#                     rect_shape_indices_by_frame.append([])
-#                     first = False
-#             finally:
-#                 cap.release()
-
-#             # lock axes to image extents
-#             fig.update_xaxes(range=[0, W], visible=False, fixedrange=True, row=1, col=1)
-#             fig.update_yaxes(range=[H, 0], visible=False, fixedrange=True, row=1, col=1)
-#         else:
-#             # Overlay mode: crop and draw overlays per frame
-#             cap = cv2.VideoCapture(video_path)
-#             try:
-#                 first = True
-#                 for t, fid in enumerate(orig_indices):
-#                     cap.set(cv2.CAP_PROP_POS_FRAMES, int(fid))
-#                     ok, bgr = cap.read()
-#                     if not ok or bgr is None:
-#                         # fallback to blank frame
-#                         rgb = np.zeros((H, W, 3), dtype=np.uint8)
-#                         crop = rgb
-#                         x1 = y1 = 0
-#                         sx = sy = 1.0
-#                         used_rect = False
-#                     else:
-#                         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-#                         crop = None
-#                         x1 = y1 = 0
-#                         sx = sy = 1.0
-#                         used_rect = False
-#                         # Prefer rectangle-driven crop
-#                         if overlay_rect_df is not None and (int(fid) in overlay_rect_df.index):
-#                             r = overlay_rect_df.loc[int(fid)]
-#                             try:
-#                                 rx, ry, rw, rh = map(int, [r["x"], r["y"], r["w"], r["h"]])
-#                             except Exception:
-#                                 try:
-#                                     rx, ry, rw, rh = map(int, r.values[:4])
-#                                 except Exception:
-#                                     rx = ry = rw = rh = None
-#                             if None not in (rx, ry, rw, rh):
-#                                 crop, box_scaled, _unused, (x1, y1, sx, sy) = crop_and_scale(
-#                                     rgb, x=rx, y=ry, w=rw, h=rh, cushion_ratio=cushion_ratio, target_size=(W, H)
-#                                 )
-#                                 used_rect = True
-#                                 # add image
-#                                 fig.add_trace(go.Image(z=crop, visible=True, opacity=1.0 if first else 0.0), row=1, col=1)
-#                                 nav_trace_indices.append(len(fig.data) - 1)
-#                                 # overlays for this frame
-#                                 per_frame_traces: List[int] = []
-#                                 per_frame_shapes: List[int] = []
-#                                 # Rectangle shape overlay
-#                                 if box_scaled is not None:
-#                                     bx, by, bw, bh = box_scaled
-#                                     fig.add_shape(
-#                                         type="rect",
-#                                         x0=bx, y0=by, x1=bx + bw, y1=by + bh,
-#                                         line=dict(color="red", width=2),
-#                                         visible=True if first else False,
-#                                         row=1, col=1,
-#                                     )
-#                                     if fig.layout.shapes:
-#                                         per_frame_shapes.append(len(fig.layout.shapes) - 1)
-#                                 # Landmarks overlay if available
-#                                 if overlay_land_df is not None and (int(fid) in overlay_land_df.index):
-#                                     lmk_row = overlay_land_df.loc[int(fid)]
-#                                     xs = lmk_row.values[::2].astype(float)
-#                                     ys = lmk_row.values[1::2].astype(float)
-#                                     xs_crop = (xs - x1) * sx
-#                                     ys_crop = (ys - y1) * sy
-#                                     fig.add_trace(
-#                                         go.Scatter(
-#                                             x=xs_crop, y=ys_crop,
-#                                             mode="markers",
-#                                             marker=dict(color="blue", size=5, symbol="circle"),
-#                                             name="Landmarks",
-#                                             showlegend=False,
-#                                             visible=True if first else False,
-#                                         ),
-#                                         row=1, col=1,
-#                                     )
-#                                     per_frame_traces.append(len(fig.data) - 1)
-#                                 overlay_trace_indices_by_frame.append(per_frame_traces)
-#                                 rect_shape_indices_by_frame.append(per_frame_shapes)
-#                         # Landmark-driven crop (fallback)
-#                         if crop is None and overlay_land_df is not None and (int(fid) in overlay_land_df.index):
-#                             lmk_row = overlay_land_df.loc[int(fid)]
-#                             xs = lmk_row.values[::2].astype(float)
-#                             ys = lmk_row.values[1::2].astype(float)
-#                             crop, xs_crop, ys_crop, (x1, y1, sx, sy) = crop_and_scale(
-#                                 rgb, xs=xs, ys=ys, cushion_ratio=cushion_ratio, target_size=(W, H)
-#                             )
-#                             used_rect = False
-#                             # add image
-#                             fig.add_trace(go.Image(z=crop, visible=True, opacity=1.0 if first else 0.0), row=1, col=1)
-#                             nav_trace_indices.append(len(fig.data) - 1)
-#                             # overlays for this frame
-#                             per_frame_traces = []
-#                             per_frame_shapes = []
-#                             # Landmarks overlay (main)
-#                             fig.add_trace(
-#                                 go.Scatter(
-#                                     x=xs_crop, y=ys_crop,
-#                                     mode="markers",
-#                                     marker=dict(color="blue", size=5, symbol="circle"),
-#                                     name="Landmarks",
-#                                     showlegend=False,
-#                                     visible=True if first else False,
-#                                 ),
-#                                 row=1, col=1,
-#                             )
-#                             per_frame_traces.append(len(fig.data) - 1)
-#                             # Rectangle overlay if present as companion
-#                             if overlay_rect_df is not None and (int(fid) in overlay_rect_df.index):
-#                                 try:
-#                                     r = overlay_rect_df.loc[int(fid)]
-#                                     rx, ry, rw, rh = float(r["x"]), float(r["y"]), float(r["w"]), float(r["h"])
-#                                     x_rel, y_rel = (rx - x1) * sx, (ry - y1) * sy
-#                                     w_rel, h_rel = rw * sx, rh * sy
-#                                     fig.add_shape(
-#                                         type="rect",
-#                                         x0=x_rel, y0=y_rel, x1=x_rel + w_rel, y1=y_rel + h_rel,
-#                                         line=dict(color="red", width=2),
-#                                         visible=True if first else False,
-#                                         row=1, col=1,
-#                                     )
-#                                     if fig.layout.shapes:
-#                                         per_frame_shapes.append(len(fig.layout.shapes) - 1)
-#                                 except Exception:
-#                                     pass
-#                             overlay_trace_indices_by_frame.append(per_frame_traces)
-#                             rect_shape_indices_by_frame.append(per_frame_shapes)
-#                         # If still no crop, show raw resized frame
-#                         if crop is None:
-#                             frame_resized = cv2.resize(rgb, (W, H), interpolation=cv2.INTER_AREA)
-#                             fig.add_trace(go.Image(z=frame_resized, visible=True, opacity=1.0 if first else 0.0), row=1, col=1)
-#                             nav_trace_indices.append(len(fig.data) - 1)
-#                             overlay_trace_indices_by_frame.append([])
-#                             rect_shape_indices_by_frame.append([])
-#                     first = False
-#             finally:
-#                 cap.release()
-
-#             # lock axes to image extents
-#             fig.update_xaxes(range=[0, W], visible=False, fixedrange=True, row=1, col=1)
-#             fig.update_yaxes(range=[H, 0], visible=False, fixedrange=True, row=1, col=1)
-
-#         # caption under the video (centered under the left subplot)
-#         cap_text = f"Frame: 1 / {n_frames} (orig {int(orig_indices[0])})"
-#         fig.add_annotation(
-#             text=cap_text,
-#             x=0.5, xref="x domain",  # center of left subplot
-#             y=-0.14, yref="paper",   # below the subplot area
-#             showarrow=False,
-#             align="center",
-#         )
-#         caption_anno_index = len(fig.layout.annotations) - 1
-
-#     # right: 79 lines (start with 1 point each so they build up) + current marker
-#     line_trace_indices: List[int] = []
-#     for gi in range(ge_count):
-#         trace = go.Scatter3d(
-#             x=[0.0], y=[float(gi)], z=[z_by_ge[gi, 0]],
-#             mode="lines",
-#             line=dict(width=2, color=colorway[gi % len(colorway)]),
-#             showlegend=False,
-#             hovertemplate="t=%{x}<br>GE %{y}: %{z}<extra></extra>",
-#         )
-#         if has_video:
-#             fig.add_trace(trace, row=1, col=2)
-#         else:
-#             fig.add_trace(trace)
-#         line_trace_indices.append(len(fig.data) - 1)
-
-#     y_idx = np.arange(ge_count, dtype=float)
-#     z0 = ge_vals[0, :] if ge_count else np.array([])
-#     marker_trace = go.Scatter3d(
-#         x=np.zeros_like(y_idx),
-#         y=y_idx,
-#         z=z0,
-#         mode="markers",
-#         marker=dict(size=4, symbol="circle", color=[colorway[i % len(colorway)] for i in range(ge_count)]),
-#         showlegend=False,
-#         name="Current",
-#     )
-#     if has_video:
-#         fig.add_trace(marker_trace, row=1, col=2)
-#     else:
-#         fig.add_trace(marker_trace)
-#     marker_trace_index = len(fig.data) - 1
-
-#     # 3D layout: zoomed-in camera + aspect so it fills the right pane
-#     scene_kwargs = dict(
-#             xaxis=dict(title=f"Frame (x{stride})", range=[0, max(1, float(n_frames - 1))]),
-#             yaxis=dict(title="GE Index", range=[-1, ge_count]),
-#             zaxis=dict(title="Value"),
-
-#             camera=dict(
-#                 eye=dict(x=1.75, y=-1.25, z=0.35),
-#                 up=dict(x=0, y=0, z=1),
-#                 center=dict(x=0, y=0, z=0),  # ensure camera is centered on the scene
-#                 projection=dict(type="perspective"),
-#             ),
-#         )
-#     if has_video:
-#         fig.update_scenes(scene_kwargs, row=1, col=2)
-#     else:
-#         fig.update_scenes(scene_kwargs)
-
-#     # Build meta including overlay mappings
-#     meta_frame_nav = dict(
-#         type="expressions",
-#         frame_indices=list(range(n_frames)),
-#         active_index=0,
-#         play_fps=int(play_fps),
-#         trace_indices=nav_trace_indices if nav_trace_indices else [],
-#     )
-#     meta_extra = dict(
-#         expr_marker_trace_index=int(marker_trace_index),
-#         expr_marker_y=y_idx.tolist(),
-#         expr_marker_z_by_frame=[ge_vals[t, :].astype(float).tolist() for t in range(n_frames)],
-#         expr_line_trace_indices=line_trace_indices,
-#         expr_line_z_by_ge=[z_by_ge[g, :].astype(float).tolist() for g in range(ge_count)],
-#         expr_line_x_full=x_full.astype(float).tolist(),
-#         expr_line_y_const=[float(g) for g in range(ge_count)],
-#         expr_orig_indices=orig_indices.astype(int).tolist(),
-#         frame_caption_anno_index=int(caption_anno_index),
-#     )
-#     # Attach per-frame overlay meta (only when video and overlay present)
-#     if has_video and overlay_present:
-#         meta_extra["overlay_traces_by_frame"] = overlay_trace_indices_by_frame
-#         meta_extra["rectangle_shapes_by_frame"] = rect_shape_indices_by_frame
-#         if blur_default:
-#             # For future privacy toggles; no button here but keep state
-#             meta_extra["blur_initial"] = True
-
-#     fig.update_layout(
-#         title=dict(text=title, x=0.5, xanchor="center"),
-#         font={"family": "Roboto, sans-serif", "size": 14, "color": "#111"},
-#         height=760 if has_video else 700,
-#         margin=dict(t=40, l=30, r=30, b=110 if has_video else 60),  # extra bottom for caption
-#         paper_bgcolor="white",
-#         plot_bgcolor="white",
-#         showlegend=False,
-#         uirevision=True,
-#         meta=dict(frame_nav=meta_frame_nav, **meta_extra),
-#     )
-
-#     # ---------------------------- HTML (toolbar) ----------------------
-#     inner = pio.to_html(
-#         fig,
-#         full_html=False,
-#         include_plotlyjs="cdn",
-#         config={"responsive": True, "displayModeBar": True},
-#         div_id="plot",
-#     )
-#     export_filename_safe = title.replace(" ", "_")
-
-#     buttons_html = (
-#         '<button id="prevBtn" class="btn">&#8592; Prev</button>'
-#         '<button id="playBtn" class="btn">Play</button>'
-#         '<button id="nextBtn" class="btn">Next &#8594;</button>'
-#         ' &nbsp; '
-#         '<button id="exportBtn" class="btn export">Export (PNG)</button>'
-#         ' '
-#         '<button id="export3DBtn" class="btn export">Export 3D (PNG)</button>'
-#     )
-
-#     html_template = Template(r"""
-# <!doctype html>
-# <html lang="en">
-# <head>
-#   <meta charset="utf-8" />
-#   <meta name="viewport" content="width=device-width, initial-scale=1" />
-#   <title>$export_filename_safe</title>
-#   <style>
-#     body { margin: 0; background: #fff; font-family: Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
-#     #plot-wrapper { margin-top: 38px; } /* add space above the title */
-#     .toolbar { margin: 14px 0 22px; display: flex; gap: 10px; align-items: center; justify-content: center; width: 100%; flex-wrap: wrap; }
-#     .btn { padding: 6px 12px; border-radius: 6px; border: 2px solid #000; background: #f8f8f8; color: #222; cursor: pointer; user-select: none; }
-#     .btn:hover { background: #eee; }
-#     .btn.export { border-color: #000; }
-#     .btn:active, .btn.active { border-color: #2ecc71; }
-#     #plot { max-width: 1200px; }
-#   </style>
-# </head>
-# <body>
-#   <div id="plot-wrapper">$inner</div>
-#   <div class="toolbar">$buttons_html</div>
-#   <script>
-#     (function(){
-#       const gd = document.getElementById('plot') || document.querySelector('.js-plotly-plot');
-#       const prevBtn = document.getElementById('prevBtn');
-#       const nextBtn = document.getElementById('nextBtn');
-#       const playBtn = document.getElementById('playBtn');
-#       const exportBtn = document.getElementById('exportBtn');
-#       const export3DBtn = document.getElementById('export3DBtn');
-
-#       let playing = false, timer = null, activeIndex = 0;
-
-#       function nav() { try { return (gd && gd.layout && gd.layout.meta && gd.layout.meta.frame_nav) || {}; } catch(e) { return {}; } }
-#       function frames(){ const m = nav(); return Array.isArray(m.frame_indices) ? m.frame_indices.slice() : []; }
-#       function fps(){ const m = nav(); return Math.max(1, Number(m.play_fps)||5); }
-#       function navTraceIdxs(){ const m = nav(); return (m.trace_indices || []).slice(); }
-
-#       function meta(){
-#         const m = (gd && gd.layout && gd.layout.meta) || {};
-#         return {
-#           markerIdx: (typeof m.expr_marker_trace_index === 'number') ? m.expr_marker_trace_index : -1,
-#           markerY:   Array.isArray(m.expr_marker_y) ? m.expr_marker_y : [],
-#           markerZs:  Array.isArray(m.expr_marker_z_by_frame) ? m.expr_marker_z_by_frame : [],
-#           lineIdxs:  Array.isArray(m.expr_line_trace_indices) ? m.expr_line_trace_indices : [],
-#           lineZbyGe: Array.isArray(m.expr_line_z_by_ge) ? m.expr_line_z_by_ge : [],
-#           lineX:     Array.isArray(m.expr_line_x_full) ? m.expr_line_x_full : [],
-#           lineYc:    Array.isArray(m.expr_line_y_const) ? m.expr_line_y_const : [],
-#           origIdx:   Array.isArray(m.expr_orig_indices) ? m.expr_orig_indices : [],
-#           capIdx:    (typeof m.frame_caption_anno_index === 'number') ? m.frame_caption_anno_index : -1,
-#           overTrByF: Array.isArray(m.overlay_traces_by_frame) ? m.overlay_traces_by_frame : [],
-#           rectShByF: Array.isArray(m.rectangle_shapes_by_frame) ? m.rectangle_shapes_by_frame : [],
-#           blurInit: !!m.blur_initial,
-#         };
-#       }
-
-#       function setActive(i){
-#         const n = frames().length;
-#         if (!n) return;
-#         activeIndex = ((i % n) + n) % n;
-#       }
-
-#       async function initImageStack(){
-#         const idxs = navTraceIdxs();
-#         if (!idxs.length) return;
-#         await Plotly.restyle(gd, {visible: true, opacity: 0}, idxs);
-#         await Plotly.restyle(gd, {opacity: 1}, [idxs[activeIndex]]);
-#         await updateOverlaysForFrame(activeIndex);
-#       }
-#       async function applyActiveImage(){
-#         const idxs = navTraceIdxs();
-#         if (!idxs.length) return;
-#         const tIdx = idxs[activeIndex];
-#         await Plotly.restyle(gd, {opacity: 0}, idxs);
-#         await Plotly.restyle(gd, {opacity: 1}, [tIdx]);
-#         await updateOverlaysForFrame(activeIndex);
-#       }
-
-#       async function updateLinesAndMarkerAndCaption(){
-#         const m = meta();
-#         const t = activeIndex;
-
-#         // marker (one point per GE at frame t)
-#         if (m.markerIdx >= 0 && m.markerY.length && Array.isArray(m.markerZs[t])) {
-#           const y = m.markerY.slice();
-#           const x = new Array(y.length).fill(t);
-#           const z = m.markerZs[t].slice();
-#           await Plotly.restyle(gd, {x: [x], y: [y], z: [z]}, [m.markerIdx]);
-#         }
-
-#         // progressive lines
-#         const idxs = m.lineIdxs;
-#         if (idxs.length && m.lineZbyGe.length) {
-#           const xs = [], ys = [], zs = [];
-#           for (let g = 0; g < idxs.length; g++) {
-#             const zfull = m.lineZbyGe[g] || [];
-#             const xfull = m.lineX || [];
-#             const k = Math.min(t + 1, Math.min(zfull.length, xfull.length));
-#             xs.push([].slice.call(xfull, 0, k));
-#             ys.push(new Array(k).fill(m.lineYc[g] || g));
-#             zs.push([].slice.call(zfull, 0, k));
-#           }
-#           await Plotly.restyle(gd, {x: xs, y: ys, z: zs}, idxs);
-#         }
-
-#         // caption under the video (annotation text)
-#         const total = frames().length;
-#         const orig = (Array.isArray(m.origIdx) && m.origIdx[t] !== undefined) ? m.origIdx[t] : t;
-#         if (m.capIdx >= 0) {
-#           const payload = {};
-#           payload['annotations[' + m.capIdx + '].text'] = 'Frame: ' + (t+1) + ' / ' + total + ' (orig ' + orig + ')';
-#           await Plotly.relayout(gd, payload);
-#         }
-#       }
-
-#       // NEW: toggle overlays per active frame
-#       async function updateOverlaysForFrame(t){
-#         const m = meta();
-#         const over = m.overTrByF || [];
-#         const rects = m.rectShByF || [];
-#         // traces
-#         const allTr = [].concat.apply([], over);
-#         if (allTr.length) {
-#           try { await Plotly.restyle(gd, {visible: false}, allTr); } catch(e) {}
-#         }
-#         const currTr = (Array.isArray(over[t]) ? over[t] : []);
-#         if (currTr.length) {
-#           try { await Plotly.restyle(gd, {visible: true}, currTr); } catch(e) {}
-#         }
-#         // shapes
-#         const allSh = [].concat.apply([], rects);
-#         const payload = {};
-#         for (const si of allSh) payload['shapes['+si+'].visible'] = false;
-#         const currSh = (Array.isArray(rects[t]) ? rects[t] : []);
-#         for (const si of currSh) payload['shapes['+si+'].visible'] = true;
-#         if (Object.keys(payload).length) {
-#           try { await Plotly.relayout(gd, payload); } catch(e) {}
-#         }
-#       }
-
-#       function start(){
-#         if (playing) return;
-#         playing = true; if (playBtn) playBtn.textContent = 'Pause';
-#         timer = setInterval(async function(){
-#           setActive(activeIndex + 1);
-#           await applyActiveImage();
-#           await updateLinesAndMarkerAndCaption();
-#         }, Math.round(1000 / fps()));
-#       }
-#       function stop(){
-#         playing = false; if (playBtn) playBtn.textContent = 'Play';
-#         if (timer) { clearInterval(timer); timer = null; }
-#       }
-
-#       function flash(el){
-#         if (!el) return;
-#         el.classList.add('active');
-#         setTimeout(() => el.classList.remove('active'), 180);
-#       }
-
-#       // NEW: export only the 3D scene (right subplot or full figure if no video)
-#       function exportSceneOnly(){
-#         try{
-#           const m = meta();
-#           const idxs = (m.lineIdxs || []).slice();
-#           if (m.markerIdx >= 0) idxs.push(m.markerIdx);
-#           if (!idxs.length) return;
-#           // Clone current traces (so we capture current progressive lines and marker state)
-#           const traces = [];
-#           for (const i of idxs){
-#             const tr = gd.data && gd.data[i];
-#             if (tr) traces.push(JSON.parse(JSON.stringify(tr)));
-#           }
-#           if (!traces.length) return;
-#           // Clone current scene layout and reset domain so it fills the figure
-#           const scene = (gd.layout && gd.layout.scene) ? JSON.parse(JSON.stringify(gd.layout.scene)) : {};
-#           if (scene && scene.domain) delete scene.domain; // remove subplot domain from original figure
-#           if (scene && scene.anchor) delete scene.anchor;
-
-#           // Determine export size from current figure if possible
-#           const dfl = (gd && gd._fullLayout) || {};
-#           const width  = Math.max(800, Math.min(1600, Number(dfl.width)  || 1200));
-#           const height = Math.max(600, Math.min(1200, Number(dfl.height) || 800));
-
-#           // Pull over base figure theming
-#           const baseLayout = (gd && gd.layout) || {};
-#           const titleText = (baseLayout.title && (typeof baseLayout.title === 'string' ? baseLayout.title : baseLayout.title.text)) || '3D Expressions';
-#           const font = baseLayout.font ? JSON.parse(JSON.stringify(baseLayout.font)) : null;
-#           const paperBG = baseLayout.paper_bgcolor || 'white';
-#           const plotBG = baseLayout.plot_bgcolor || 'white';
-
-#           // Build layout with explicit size and title so Plotly centers correctly
-#           const lay = {
-#             scene: scene,
-#             paper_bgcolor: paperBG,
-#             plot_bgcolor: plotBG,
-#             showlegend: false,
-#             margin: {t: 70, l: 2, r: 2, b: 2},
-#             width: width,
-#             height: height,
-#             autosize: false,
-#             title: { text: titleText, x: 0.5, xanchor: 'center' }
-#           };
-#           if (font) lay.font = font;
-
-#           const tmp = document.createElement('div');
-#           tmp.style.position = 'fixed';
-#           tmp.style.left = '-2000px';
-#           tmp.style.top = '-2000px';
-#           tmp.style.width = width + 'px';
-#           tmp.style.height = height + 'px';
-#           document.body.appendChild(tmp);
-#           Plotly.newPlot(tmp, traces, lay, {displayModeBar: false, responsive: false})
-#             .then(function(){
-#               return Plotly.downloadImage(tmp, {format: 'png', width: width, height: height, filename: 'bitbox_viz_3d'});
-#             })
-#             .then(function(){
-#               Plotly.purge(tmp); document.body.removeChild(tmp);
-#             })
-#             .catch(function(){
-#               try { Plotly.purge(tmp); document.body.removeChild(tmp); } catch(e) {}
-#             });
-#         } catch(e) { /* no-op */ }
-#       }
-
-#       // Lightweight full export: current frame image + its overlays + current 3D scene
-#       function exportFullLightweight(){
-#         try{
-#           const hasVideo = (navTraceIdxs().length > 0);
-#           // If no video, reuse the 3D-only exporter
-#           if (!hasVideo) { exportSceneOnly(); return; }
-
-#           const dfl = (gd && gd._fullLayout) || {};
-#           const width  = Math.max(800, Math.min(1920, Number(dfl.width)  || 1280));
-#           const height = Math.max(600, Math.min(1200, Number(dfl.height) || 760));
-
-#           // Collect left image + overlays for current frame
-#           const t = activeIndex;
-#           const imgIdxs = navTraceIdxs();
-#           if (!imgIdxs.length) return;
-#           const activeImgIdx = imgIdxs[((t % imgIdxs.length)+imgIdxs.length)%imgIdxs.length];
-
-#           const traces = [];
-#           const pushClone = (idx) => {
-#             const tr = gd.data && gd.data[idx];
-#             if (!tr) return;
-#             const clone = JSON.parse(JSON.stringify(tr));
-#             clone.visible = true;
-#             if (typeof clone.opacity !== 'undefined') clone.opacity = 1;
-#             traces.push(clone);
-#           };
-
-#           // image
-#           pushClone(activeImgIdx);
-
-#           // overlays (points/lines) for this frame
-#           const m = meta();
-#           const overlaysThis = (Array.isArray(m.overTrByF) && Array.isArray(m.overTrByF[t])) ? m.overTrByF[t] : [];
-#           overlaysThis.forEach(pushClone);
-
-#           // 3D traces (lines + marker)
-#           const sceneIdxs = (m.lineIdxs || []).slice();
-#           if (m.markerIdx >= 0) sceneIdxs.push(m.markerIdx);
-#           sceneIdxs.forEach(pushClone);
-
-#           // Clone scene layout, clear subplot anchoring so it takes right half
-#           const scene = (gd.layout && gd.layout.scene) ? JSON.parse(JSON.stringify(gd.layout.scene)) : {};
-#           if (scene && scene.domain) delete scene.domain;
-#           if (scene && scene.anchor) delete scene.anchor;
-
-#           // Build axes for left image pane using existing xaxis/yaxis settings if present
-#           const xax = (gd.layout && gd.layout.xaxis) ? JSON.parse(JSON.stringify(gd.layout.xaxis)) : {visible:false, fixedrange:true};
-#           const yax = (gd.layout && gd.layout.yaxis) ? JSON.parse(JSON.stringify(gd.layout.yaxis)) : {visible:false, fixedrange:true};
-
-#           // Place subplots side-by-side
-#           const spacing = 0.06; // match original
-#           const leftMax = 0.5 - spacing/2;
-#           const rightMin = 0.5 + spacing/2;
-#           xax.domain = [0, Math.max(0.1, leftMax)];
-#           // Full height
-#           // y domain by default [0,1]
-#           scene.domain = {x: [Math.min(0.9, rightMin), 1], y: [0, 1]};
-
-#           // Copy only the shapes for this frame (rectangles)
-#           let shapes = [];
-#           const allShapes = (gd.layout && Array.isArray(gd.layout.shapes)) ? gd.layout.shapes : [];
-#           const shIdxs = (Array.isArray(m.rectShByF) && Array.isArray(m.rectShByF[t])) ? m.rectShByF[t] : [];
-#           if (allShapes && shIdxs.length) {
-#             shapes = shIdxs.map(si => {
-#               const s = allShapes[si];
-#               return s ? JSON.parse(JSON.stringify(s)) : null;
-#             }).filter(Boolean);
-#             // ensure shapes are visible and bound to left axes
-#             shapes.forEach(s => { s.visible = true; if (!s.xref) s.xref = 'x'; if (!s.yref) s.yref = 'y'; });
-#           }
-
-#           // Theming and title
-#           const baseLayout = (gd && gd.layout) || {};
-#           const titleText = (baseLayout.title && (typeof baseLayout.title === 'string' ? baseLayout.title : baseLayout.title.text)) || '';
-#           const font = baseLayout.font ? JSON.parse(JSON.stringify(baseLayout.font)) : null;
-#           const paperBG = baseLayout.paper_bgcolor || 'white';
-#           const plotBG = baseLayout.plot_bgcolor || 'white';
-
-#           const lay = {
-#             xaxis: xax,
-#             yaxis: yax,
-#             scene: scene,
-#             shapes: shapes,
-#             paper_bgcolor: paperBG,
-#             plot_bgcolor: plotBG,
-#             showlegend: false,
-#             margin: {t: titleText ? 70 : 10, l: 10, r: 10, b: 10},
-#             width: width,
-#             height: height,
-#             autosize: false,
-#           };
-#           if (titleText) lay.title = { text: titleText, x: 0.5, xanchor: 'center' };
-#           if (font) lay.font = font;
-
-#           const tmp = document.createElement('div');
-#           tmp.style.position = 'fixed';
-#           tmp.style.left = '-2000px';
-#           tmp.style.top = '-2000px';
-#           tmp.style.width = width + 'px';
-#           tmp.style.height = height + 'px';
-#           document.body.appendChild(tmp);
-
-#           Plotly.newPlot(tmp, traces, lay, {displayModeBar: false, responsive: false})
-#             .then(function(){
-#               return Plotly.downloadImage(tmp, {format: 'png', width: width, height: height, filename: 'bitbox_viz'});
-#             })
-#             .then(function(){ Plotly.purge(tmp); document.body.removeChild(tmp); })
-#             .catch(function(){ try { Plotly.purge(tmp); document.body.removeChild(tmp); } catch(e) {} });
-#         } catch(e) { /* no-op */ }
-#       }
-
-#       function bind(){
-#         const n = frames().length;
-#         const m = nav();
-#         activeIndex = (typeof m.active_index === 'number') ? m.active_index : 0;
-#         if (n) { initImageStack(); }
-#         updateLinesAndMarkerAndCaption();
-
-#         if (prevBtn) prevBtn.onclick = async function(){ flash(this); stop(); setActive(activeIndex - 1); await applyActiveImage(); await updateLinesAndMarkerAndCaption(); };
-#         if (nextBtn) nextBtn.onclick = async function(){ flash(this); stop(); setActive(activeIndex + 1); await applyActiveImage(); await updateLinesAndMarkerAndCaption(); };
-#         if (playBtn) playBtn.onclick = function(){ flash(this); playing ? stop() : start(); };
-#         if (exportBtn) exportBtn.onclick = function(){ flash(this); exportFullLightweight(); };
-#         if (export3DBtn) export3DBtn.onclick = function(){ flash(this); exportSceneOnly(); };
-#       }
-
-#       (function waitReady(){
-#         if (gd && gd._fullLayout) { bind(); }
-#         else { setTimeout(waitReady, 50); }
-#       })();
-#     })();
-#   </script>
-# </body>
-# </html>
-# """)
-
-#     # Resolve output path (file or directory)
-#     if os.path.isdir(out_dir):
-#         out_dir = os.path.join(out_dir, "bitbox_viz.html")
-
-#     html = html_template.safe_substitute(
-#         export_filename_safe=export_filename_safe,
-#         inner=inner,
-#         buttons_html=buttons_html,
-#     )
-#     os.makedirs(os.path.dirname(out_dir) or ".", exist_ok=True)
-#     with open(out_dir, "w", encoding="utf-8") as f:
-#         f.write(html)
-
-#     return fig
-
 def visualize_expressions_3d(
     expressions,
     out_dir: str = "bitbox_viz.html",
@@ -3352,34 +2561,10 @@ def write_video_overlay_html(
     expr_max_frames: int = 360,            # cap for HTML weight
     expr_title: Optional[str] = None,      # optional override of right pane title
 ) -> None:
-    """
-    Cropped video + overlays on the left, synchronized interactive pane on the right:
-      • If can3d_map provided  -> 3D canonical landmark scatter (per-frame).
-      • Else if pose provided  -> 3D head-pose axes (with cones + labels + camera presets).
-      • Else if expressions    -> 3D expressions (progressive polylines + moving marker).
-      • Else                    -> no right pane.
-
-    Implemented (from original):
-      - Chunked overlays for large maps.
-      - No border around 3D plot.
-      - Export PNG (title + video pane + 3D snapshot).
-      - Face Blur and Hide Face toggles (whole frame), overlays always visible.
-      - Centered toolbar.
-      - Head-pose axes with arrowheads + labels (pitch/yaw/roll), restyled every frame.
-      - Camera presets: ISO / Front / Left / Top / Follow (follow tracks head pose).
-      - View buttons positioned under the 3D pane (hidden when only expressions are shown).
-
-    NEW:
-      - Expressions 3D: GE series drawn as progressive polylines over time with a moving marker row.
-      - Right-pane precedence: can3d > pose > expressions.
-
-    Interactivity fix:
-      - CSS forces pointer events to the Plotly area and prevents browser gesture hijacking.
-      - JS binds wheel/gesture listeners after Plotly.newPlot to keep scrollZoom/pinch working.
-    """
-    import json, os
+    import os
     from typing import List, Tuple, Optional, Union
     import numpy as np
+    import json as _json
 
     # Optional pandas import for expressions
     try:
@@ -3407,11 +2592,6 @@ def write_video_overlay_html(
         downsample: int,
         max_frames: int,
     ) -> Tuple[bool, dict]:
-        """
-        Returns (has_expr, payload_dict_for_html).
-        payload includes:
-          expr_has, ge_count, n_frames, stride, x_full, y_const, line_z_by_ge, marker_z_by_frame, orig_indices, ge_cols
-        """
         if df is None or df.empty:
             return False, {}
 
@@ -3495,7 +2675,6 @@ def write_video_overlay_html(
     CHUNK_SIZE = 500
     use_chunks = len(total_frame_keys) > MAX_INLINE_FRAMES
 
-    import json as _json
     rects_json = "{}"
     lands_json = "{}"
     can3d_json = "{}"
@@ -3552,9 +2731,9 @@ def write_video_overlay_html(
     expr_df = _to_df(expressions) if (expressions is not None) else (None if pd is None else pd.DataFrame())
     has_expr_raw, expr_payload = _prep_expressions(expr_df, expr_smooth, expr_downsample, expr_max_frames) if (pd is not None) else (False, {})
     # Right pane precedence: can3d > pose > expressions
-    has_expr = (not has_can3d) and (not has_pose) and bool(has_expr_raw)
-
-    has_3d_any = has_can3d or has_pose or has_expr
+    has_expr_for_3d = (not has_can3d) and (not has_pose) and bool(has_expr_raw)
+    has_3d_any = has_can3d or has_pose or has_expr_for_3d
+    has_expr_any = bool(has_expr_raw)  # governs new 2D plots + sidebar
 
     # Title
     if title == "Video Overlay":
@@ -3562,7 +2741,7 @@ def write_video_overlay_html(
             computed_title = "Video + 3D Canonicalized Landmarks"
         elif has_pose:
             computed_title = "Video + Head Pose (3D axes)"
-        elif has_expr:
+        elif has_expr_for_3d:
             computed_title = expr_title or "Video + Expressions (3D)"
         elif has_lands and not has_rects:
             computed_title = "Video with Landmarks"
@@ -3575,6 +2754,19 @@ def write_video_overlay_html(
     else:
         computed_title = title
 
+    # Decide sizes
+    if fixed_portrait:
+        box_w, box_h = int(portrait_w), int(portrait_h)
+    else:
+        box_w, box_h = int(TS_W), int(TS_H)
+
+    # Right sidebar width for region buttons
+    side_w = 140
+    gap = 24
+    plot_w = int(box_w)  # keep 3D same width as video
+    # overall width for full-width 2D plot under toolbar
+    page_w = box_w + (gap if has_3d_any else 0) + (plot_w if has_3d_any else 0) + (gap if has_expr_any else 0) + (side_w if has_expr_any else 0)
+
     # Build HTML
     def _build_html(box_w: int, box_h: int) -> str:
         html_base = r"""<!doctype html>
@@ -3585,59 +2777,93 @@ def write_video_overlay_html(
 <style>
   body { margin:0; background:#fff; font-family:Roboto, Helvetica, Arial, sans-serif; color:#111; display:flex; flex-direction:column; align-items:center; }
   h2.title { margin:40px 0 14px; font-weight:400; font-size:20px; text-align:center; }
-  .container { display:flex; gap:24px; justify-content:center; align-items:flex-start; padding:10px 16px 0; flex-wrap:wrap; }   
-  .video-wrap {
-    position:relative;
-    width:__BOX_W__px;
-    height:__BOX_H__px;
-    flex: 0 0 __BOX_W__px;      /* <- prevents initial flex shrink */
-  }
-  .plot-wrap  { position:relative; width:100%;      height:__BOX_H__px; }
-  /* Interactivity + layering for Plotly */
-  .plot-wrap { border:none; border-radius:0; box-sizing:border-box; background:transparent; position:relative; z-index:2; }
-  #plot3d { width:100%; height:100%; pointer-events:auto; touch-action: none; }
+  .container { display:flex; gap:24px; justify-content:center; align-items:flex-start; padding:10px 16px 0; flex-wrap:nowrap; }
+    .sticky-col { position: static; }
+
+    /* new: wrapper that pins the whole top section (video + 3D + toolbar) */
+    .sticky-header {
+    position: sticky;
+    top: 0;             /* change if you have a fixed site header */
+    z-index: 1000;
+    background: #fff;   /* prevents see-through while scrolling */
+    padding: 6px 0 8px;
+    }
+
+    /* allow the sticky header to use natural width */
+    .sticky-header .page { width: auto; max-width: none; }
+  .video-wrap { position:relative; width:__BOX_W__px; height:__BOX_H__px; }
+  .plot-wrap  { position:relative; width:__PLOT_W__px; height:__BOX_H__px; }
+  .plot-wrap { border:none; border-radius:0; box-sizing:border-box; background:transparent; z-index:2; }
+  #plot3d { width:100%; height:100%; pointer-events:auto; touch-action:none; }
   #plot3d .gl-container canvas, #plot3d .draglayer, #plot3d .nsewdrag { pointer-events:auto !important; }
-  .plot-col { display:flex; flex-direction:column; align-items:center;    
-   flex: 1 1 auto;           
-   min-width: __PLOT_W__px;  
-   }
+  .plot-col { display:flex; flex-direction:column; align-items:center; width:__PLOT_W__px; min-width:__PLOT_W__px; }
+
   .plot-controls { display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
   .btn { padding:6px 12px; border-radius:6px; border:2px solid #2ecc71; background:#f8f8f8; cursor:pointer; }
   .btn-mini { padding:6px 10px; }
+
+  /* Sidebar for facial region buttons */
+  .side-col { display:none; width:__SIDE_W__px; min-width:__SIDE_W__px; height:__BOX_H__px; box-sizing:border-box; padding:10px 10px; overflow:auto; }
+  .side-inner { width:100%; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .region-title { text-align:center; font-size:12px; margin-bottom:4px; color:#333; }
+  .region-controls { display:flex; flex-direction:column; gap:6px; width:100%; align-items:center; }
+  .btn-reg { padding:6px 10px; border-radius:6px; border:2px solid #999; background:#fafafa; cursor:pointer; font-size:12px; width:100%; text-align:center; }
+  .btn-reg.active { border-color:#2ecc71; }
+
   video#vid { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; left:-9999px; top:-9999px; }
   .stage { position:relative; width:100%; height:100%; background:transparent; }
   canvas#view, canvas#overlay { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+
   .toolbar-page { width:100%; display:flex; justify-content:center; }
-  .toolbar { margin:16px 0 24px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap; white-space:nowrap; }
+  .toolbar { margin:16px 0 24px; display:flex; flex-wrap:nowrap; gap:10px; justify-content:center; align-items:center; white-space:nowrap; }
   .seek { width:280px; accent-color:#2ecc71; }
   .time { font:12px/1.2 monospace; color:#333; }
+
+  /* Full-width container for 2D plots */
+  .page { width:__PAGE_W__px; max-width:__PAGE_W__px; }
+  .plots2d-host { display:none; width:__PAGE_W__px; box-sizing:border-box; padding:0 8px 24px; }
+  .plot2d-card { width:100%; height:240px; margin:14px 0; }
+  .plot2d { width:100%; height:100%; }
 </style>
 </head>
 <body>
   <h2 class="title">__TITLE__</h2>
   <script>window.__EXPORT_TITLE__ = "__TITLE__";</script>
 
-  <div class="container">
-    <div class="video-wrap">
-      <video id="vid" src="__REL_SRC__" muted playsinline preload="metadata"></video>
-      <div id="stage" class="stage">
-        <canvas id="view"></canvas>
-        <canvas id="overlay"></canvas>
+<div class="sticky-header">
+  <div class="container page">
+    <div class="sticky-col">
+      <div class="video-wrap">
+        <video id="vid" src="__REL_SRC__" muted playsinline preload="metadata"></video>
+        <div id="stage" class="stage">
+          <canvas id="view"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
       </div>
     </div>
-    __PLOT_WRAP__
+
+    __PLOT_WRAP__     <!-- 3D plot column (if any) -->
+    __SIDEBAR__       <!-- expressions sidebar (if any) -->
   </div>
 
-  <div class="toolbar-page">
+  <div class="toolbar-page page">
     <div class="toolbar" id="toolbar">
       <button id="playBtn" class="btn">Play</button>
+      <button id="skipBack10" class="btn btn-mini" title="Back 10 frames">-10</button>
+    <button id="skipBack1"  class="btn btn-mini" title="Back 1 frame">-1</button>
+    <button id="skipFwd1"   class="btn btn-mini" title="Forward 1 frame">+1</button>
+    <button id="skipFwd10"  class="btn btn-mini" title="Forward 10 frames">+10</button>
       <input id="seek" class="seek" type="range" min="0" max="0" step="0.01" value="0"/>
       <span id="time" class="time">0:00 / 0:00</span>
       __RECT_BTN____LAND_BTN____BLUR_BTN____HIDE_BTN____EXPORT_BTN__
     </div>
   </div>
+</div>
 
-__PLOTLY_TAG__
+  __PLOTLY_TAG__
+
+  <!-- Full-width, stacked 2D plots (one per selected region) -->
+  <div id="plots2dHost" class="plots2d-host page"></div>
 
 <script>
   const FPS = __FPS__;
@@ -3658,16 +2884,15 @@ __PLOTLY_TAG__
   const loadedRectChunks = new Set(), loadedLandChunks = new Set(), loadedCan3dChunks = new Set(), loadedPoseChunks = new Set();
   const pendingRectChunks = new Set(), pendingLandChunks = new Set(), pendingCan3dChunks = new Set(), pendingPoseChunks = new Set();
 
-  // Expressions payload (present only if HAS_EXPR)
-  const HAS_EXPR = __HAS_EXPR__;
-  const EXPR = __EXPR_JSON__;  // { expr_has, ge_count, n_frames, stride, x_full, y_const, line_z_by_ge, marker_z_by_frame, orig_indices, ge_cols }
+  // Expressions payload (for optional 2D + optional 3D expressions mode)
+  const HAS_EXPR_3D = __HAS_EXPR_3D__;
+  const HAS_EXPR_ANY = __HAS_EXPR_ANY__;
+  const EXPR = __EXPR_JSON__;
 
-  // Axis colors
-  const AX_X = 'rgb(31,119,180)';  // pitch (X) - blue
-  const AX_Y = 'rgb(255,127,14)';  // yaw (Y)   - orange
-  const AX_Z = 'rgb(44,160,44)';   // roll (Z)  - green
+  const AX_X = 'rgb(31,119,180)';
+  const AX_Y = 'rgb(255,127,14)';
+  const AX_Z = 'rgb(44,160,44)';
 
-  // Camera presets + mode
   const CAM_ISO   = { eye:{x:1.35, y:1.35, z:-1.35}, up:{x:0, y:1, z:0} };
   const CAM_FRONT = { eye:{x:0.001, y:0.001, z:2.2}, up:{x:0, y:1, z:0} };
   const CAM_LEFT  = { eye:{x:2.2,  y:0.0,   z:0.001}, up:{x:0, y:1, z:0} };
@@ -3686,14 +2911,13 @@ __PLOTLY_TAG__
 
   function loadChunk(p,start){
     if(!USE_CHUNKS) return;
-    if(!CHUNK_SIZE||CHUNK_SIZE<=0) return;
     const starts = p==='rects'?RECT_CHUNK_STARTS : p==='lands'?LAND_CHUNK_STARTS : p==='can3d'?CAN3D_CHUNK_STARTS : POSE_CHUNK_STARTS;
     const loaded = p==='rects'?loadedRectChunks : p==='lands'?loadedLandChunks : p==='can3d'?loadedCan3dChunks : loadedPoseChunks;
     const pending= p==='rects'?pendingRectChunks: p==='lands'?pendingLandChunks: p==='can3d'?pendingCan3dChunks : pendingPoseChunks;
     if(!starts.includes(start)||loaded.has(start)||pending.has(start)) return;
     pending.add(start);
     const s=document.createElement('script');
-    s.src=`${p}_chunk_${start}.js`;
+    s.src = p + '_chunk_' + start + '.js';
     s.async=true;
     s.onerror=()=>pending.delete(start);
     document.head.appendChild(s);
@@ -3715,75 +2939,93 @@ __PLOTLY_TAG__
   const blurBtn=document.getElementById('blurBtn'), hideBtn=document.getElementById('hideBtn');
   const exportBtn=document.getElementById('exportBtn');
 
+  const skipBack10=document.getElementById('skipBack10');
+  const skipBack1 =document.getElementById('skipBack1');
+  const skipFwd1  =document.getElementById('skipFwd1');
+  const skipFwd10 =document.getElementById('skipFwd10');
+
   const HAS_RECTS=__HAS_RECTS__, HAS_LANDS=__HAS_LANDS__, HAS_CAN3D=__HAS_CAN3D__, HAS_POSE=__HAS_POSE__;
-  const HAS_3D = HAS_CAN3D || HAS_POSE || HAS_EXPR;
+  const HAS_3D = HAS_CAN3D || HAS_POSE || HAS_EXPR_3D;
+
   let showRects=HAS_RECTS, showLands=HAS_LANDS;
-  let enableBlur=false, enableHide=false; // hide wins over blur
+  let enableBlur=false, enableHide=false;
   let lastCrop=null;
 
-  // --- Button labels show the ACTION (opposite of current state) ---
-    function updateBtns(){
-    if(rectBtn){
-        rectBtn.textContent = 'Rectangles: ' + (showRects ? 'Off' : 'On');
-        rectBtn.style.borderColor = showRects ? '#2ecc71' : '#999';
-    }
-    if(landBtn){
-        landBtn.textContent = 'Landmarks: ' + (showLands ? 'Off' : 'On');
-        landBtn.style.borderColor = showLands ? '#2ecc71' : '#999';
-    }
-    if(blurBtn){
-        // action label: if blurred -> "Unblur Face", else "Blur Face"
-        blurBtn.textContent = enableBlur ? 'Unblur Face' : 'Blur Face';
-        blurBtn.style.borderColor = enableBlur ? '#2ecc71' : '#999';
-    }
-    if(hideBtn){
-        // action label: if hidden -> "Show Face", else "Hide Face"
-        hideBtn.textContent = enableHide ? 'Show Face' : 'Hide Face';
-        hideBtn.style.borderColor = enableHide ? '#2ecc71' : '#999';
-    }
-    // play/pause shows action too
+  function updateBtns(){
+    if(rectBtn){ rectBtn.textContent = 'Rectangles: ' + (showRects ? 'Off' : 'On'); rectBtn.style.borderColor = showRects ? '#2ecc71' : '#999'; }
+    if(landBtn){ landBtn.textContent = 'Landmarks: ' + (showLands ? 'Off' : 'On'); landBtn.style.borderColor = showLands ? '#2ecc71' : '#999'; }
+    if(blurBtn){ blurBtn.textContent = enableBlur ? 'Unblur Face' : 'Blur Face'; blurBtn.style.borderColor = enableBlur ? '#2ecc71' : '#999'; }
+    if(hideBtn){ hideBtn.textContent = enableHide ? 'Show Face' : 'Hide Face'; hideBtn.style.borderColor = enableHide ? '#2ecc71' : '#999'; }
     playBtn.textContent = vid.paused ? 'Play' : 'Pause';
-    }
-
+  }
   if(rectBtn)rectBtn.addEventListener('click',()=>{showRects=!showRects;updateBtns();});
   if(landBtn)landBtn.addEventListener('click',()=>{showLands=!showLands;updateBtns();});
   if(blurBtn)blurBtn.addEventListener('click',()=>{enableBlur=!enableBlur; if(enableBlur) enableHide=false; updateBtns();});
   if(hideBtn)hideBtn.addEventListener('click',()=>{enableHide=!enableHide; if(enableHide) enableBlur=false; updateBtns();});
-
   playBtn.addEventListener('click',()=>{vid.paused?vid.play():vid.pause();});
   seek.addEventListener('input',()=>{vid.currentTime=parseFloat(seek.value)||0;});
+  // --- NEW: frame stepping helpers ---
+ function clampTime(t){
+  if(!isFinite(vid.duration) || vid.duration <= 0) return Math.max(0, t);
+  return Math.max(0, Math.min(t, vid.duration));
+}
+function skipFrames(n){
+  const step = (FPS && isFinite(FPS) && FPS > 0) ? (n / FPS) : 0;
+  const target = clampTime((vid.currentTime || 0) + step);
+  vid.currentTime = target;
+  try { seek.value = target; } catch(_) {}
+}
+
+// Bind clicks
+if (skipBack10) skipBack10.addEventListener('click', ()=>skipFrames(-10));
+if (skipBack1)  skipBack1 .addEventListener('click', ()=>skipFrames(-1));
+if (skipFwd1)   skipFwd1  .addEventListener('click', ()=>skipFrames(+1));
+if (skipFwd10)  skipFwd10 .addEventListener('click', ()=>skipFrames(+10));
+
+// Optional: keyboard shortcuts (←/→ = ±1, Shift+←/→ = ±10)
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'ArrowLeft'){
+    skipFrames(e.shiftKey ? -10 : -1);
+    e.preventDefault();
+  }
+  if (e.key === 'ArrowRight'){
+    skipFrames(e.shiftKey ? +10 : +1);
+    e.preventDefault();
+  }
+});
+
   function fmt(t){if(!isFinite(t))return'0:00';const m=Math.floor(t/60);const s=Math.floor(t%60).toString().padStart(2,'0');return m+':'+s;}
-  function tickUI(){if(vid.readyState>=1){seek.max=vid.duration||seek.max;seek.value=vid.currentTime||0;timeLbl.textContent=`${fmt(vid.currentTime)} / ${fmt(vid.duration)}`;updateBtns();}requestAnimationFrame(tickUI);}
+  function tickUI(){if(vid.readyState>=1){seek.max=vid.duration||seek.max;seek.value=vid.currentTime||0;timeLbl.textContent=fmt(vid.currentTime)+' / '+fmt(vid.duration);updateBtns();}requestAnimationFrame(tickUI);}
 
   function resizeCanvases(){
     const dpr=window.devicePixelRatio||1;
     for(const c of [view,overlay]){c.style.width=BOX_W+'px';c.style.height=BOX_H+'px';c.width=Math.round(BOX_W*dpr);c.height=Math.round(BOX_H*dpr);}
     vctx.setTransform(dpr,0,0,dpr,0,0);octx.setTransform(dpr,0,0,dpr,0,0);
-    if(plotDiv && HAS_3D){ try{Plotly.Plots.resize(plotDiv);}catch(_){/* no-op */} }
+    if(HAS_3D){ try{Plotly.Plots.resize(document.getElementById('plot3d'));}catch(_){ } }
+    // resize all 2D plots
+    try{
+      document.querySelectorAll('.plot2d').forEach(function(div){
+        try{ Plotly.Plots.resize(div); }catch(_){}
+      });
+    }catch(_){}
   }
 
   function cropBoxFromLandmarks(points,vw,vh){
     if(!points||!points.length)return null;
     let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
     for(const p of points){const x=p[0],y=p[1];if(x<minx)minx=x;if(y<miny)miny=y;if(x>maxx)maxx=x;if(y>maxy)maxy=y;}
-    let w=Math.max(1,maxx-minx),h=Math.max(1,maxy-miny);
-    const padX=w*CUSHION,padY=h*CUSHION;
-    let sx=Math.max(0,Math.floor(minx-padX));
-    let sy=Math.max(0,Math.floor(miny-padY));
-    let ex=Math.min(vw,Math.ceil(maxx+padX));
-    let ey=Math.min(vh,Math.ceil(maxy+padY));
+    const w=Math.max(1,maxx-minx),h=Math.max(1,maxy-miny), padX=w*CUSHION,padY=h*CUSHION;
+    let sx=Math.max(0,Math.floor(minx-padX)), sy=Math.max(0,Math.floor(miny-padY));
+    let ex=Math.min(vw,Math.ceil(maxx+padX)), ey=Math.min(vh,Math.ceil(maxy+padY));
     return[sx,sy,Math.max(1,ex-sx),Math.max(1,ey-sy)];
   }
   function cropBoxFromRects(rects,vw,vh){
     if(!rects||!rects.length)return null;
     let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
     for(const r of rects){const x1=r.x,y1=r.y,x2=r.x+r.w,y2=r.y+r.h;if(x1<minx)minx=x1;if(y1<miny)miny=y1;if(x2>maxx)maxx=x2;if(y2>maxy)maxy=y2;}
-    let w=Math.max(1,maxx-minx),h=Math.max(1,maxy-miny);
-    const padX=w*CUSHION,padY=h*CUSHION;
-    let sx=Math.max(0,Math.floor(minx-padX));
-    let sy=Math.max(0,Math.floor(miny-padY));
-    let ex=Math.min(vw,Math.ceil(maxx+padX));
-    let ey=Math.min(vh,Math.ceil(maxy+padY));
+    const w=Math.max(1,maxx-minx),h=Math.max(1,maxy-miny), padX=w*CUSHION,padY=h*CUSHION;
+    let sx=Math.max(0,Math.floor(minx-padX)), sy=Math.max(0,Math.floor(miny-padY));
+    let ex=Math.min(vw,Math.ceil(maxx+padX)), ey=Math.min(vh,Math.ceil(maxy+padY));
     return[sx,sy,Math.max(1,ex-sx),Math.max(1,ey-sy)];
   }
 
@@ -3792,44 +3034,19 @@ __PLOTLY_TAG__
     return {lands:landsByFrame[frame]||null,rects:rectsByFrame[frame]||null,can3d:can3dByFrame[frame]||null,pose:poseByFrame[frame]||null};
   }
 
-  // ---- 3D setup (Plotly) ----
+  // ---- 3D setup (unchanged behavior) ----
   const plotDiv = document.getElementById('plot3d');
-  let camera = HAS_EXPR ? { eye:{x:1.25, y:1.4, z:1.1}, up:{x:0, y:1, z:0} }
-                      : clone(CAM_FRONT);
-  let userInteracting = false; 
+  let camera = HAS_EXPR_3D ? { eye:{x:1.25, y:1.4, z:1.1}, up:{x:0, y:1, z:0} } : clone(CAM_FRONT);
+  let userInteracting = false;
 
   function toRad(a){ return POSE_UNITS==='deg' ? (a*Math.PI/180.0) : a; }
-
-  // Euler order: XYZ (Rx then Ry then Rz)
   function eulerToRot(rx,ry,rz){
-    const cx=Math.cos(rx), sx=Math.sin(rx);
-    const cy=Math.cos(ry), sy=Math.sin(ry);
-    const cz=Math.cos(rz), sz=Math.sin(rz);
-    const Rx = [[1,0,0],[0,cx,-sx],[0,sx,cx]];
-    const Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]];
-    const Rz = [[cz,-sz,0],[sz,cz,0],[0,0,1]];
-    function matMul(A,B){
-      return [
-        [A[0][0]*B[0][0]+A[0][1]*B[1][0]+A[0][2]*B[2][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]+A[0][2]*B[2][1], A[0][0]*B[0][2]+A[0][1]*B[1][2]+A[0][2]*B[2][2]],
-        [A[1][0]*B[0][0]+A[1][1]*B[1][0]+A[1][2]*B[2][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]+A[1][2]*B[2][1], A[1][0]*B[0][2]+A[1][1]*B[1][2]+A[1][2]*B[2][2]],
-        [A[2][0]*B[0][0]+A[2][1]*B[1][0]+A[2][2]*B[2][0], A[2][0]*B[0][1]+A[2][1]*B[1][1]+A[2][2]*B[2][1], A[2][0]*B[0][2]+A[2][1]*B[1][2]+A[2][2]*B[2][2]],
-      ];
-    }
-    const Rxy = matMul(Ry,Rx);
-    return matMul(Rz,Rxy);
+    const cx=Math.cos(rx), sx=Math.sin(rx); const cy=Math.cos(ry), sy=Math.sin(ry); const cz=Math.cos(rz), sz=Math.sin(rz);
+    const Rx=[[1,0,0],[0,cx,-sx],[0,sx,cx]], Ry=[[cy,0,sy],[0,1,0],[-sy,0,cy]], Rz=[[cz,-sz,0],[sz,cz,0],[0,0,1]];
+    function mul(A,B){return [[A[0][0]*B[0][0]+A[0][1]*B[1][0]+A[0][2]*B[2][0],A[0][0]*B[0][1]+A[0][1]*B[1][1]+A[0][2]*B[2][1],A[0][0]*B[0][2]+A[0][1]*B[1][2]+A[0][2]*B[2][2]],[A[1][0]*B[0][0]+A[1][1]*B[1][0]+A[1][2]*B[2][0],A[1][0]*B[0][1]+A[1][1]*B[1][1]+A[1][2]*B[2][1],A[1][0]*B[0][2]+A[1][1]*B[1][2]+A[1][2]*B[2][2]],[A[2][0]*B[0][0]+A[2][1]*B[1][0]+A[2][2]*B[2][0],A[2][0]*B[0][1]+A[2][1]*B[1][1]+A[2][2]*B[2][1],A[2][0]*B[0][2]+A[2][1]*B[1][2]+A[2][2]*B[2][2]]];}
+    const Rxy=mul(Ry,Rx); return mul(Rz,Rxy);
   }
-  function applyR(R,v){
-    return [
-      R[0][0]*v[0] + R[0][1]*v[1] + R[0][2]*v[2],
-      R[1][0]*v[0] + R[1][1]*v[1] + R[1][2]*v[2],
-      R[2][0]*v[0] + R[2][1]*v[1] + R[2][2]*v[2],
-    ];
-  }
-  function cameraFollowFromR(R, dist=1.6){
-    const eye = applyR(R,[dist,dist,dist]);
-    const up  = applyR(R,[0,1,0]);
-    return {eye:{x:eye[0],y:eye[1],z:eye[2]}, up:{x:up[0],y:up[1],z:up[2]}};
-  }
+  function applyR(R,v){ return [ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2], R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2], R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2] ]; }
 
   function setCameraMode(mode){
     if(!plotDiv) return;
@@ -3842,243 +3059,315 @@ __PLOTLY_TAG__
     }
     window.__CAM_MODE__ = mode;
   }
-
-  // Buttons under 3D pane (hidden when only expressions)
   const isoBtn=document.getElementById('isoBtn'), frontBtn=document.getElementById('frontBtn'),
         leftBtn=document.getElementById('leftBtn'), topBtn=document.getElementById('topBtn'),
         followBtn=document.getElementById('followBtn');
-  if(isoBtn)    isoBtn.addEventListener('click',  ()=>setCameraMode('iso'));
-  if(frontBtn)  frontBtn.addEventListener('click',()=>setCameraMode('front'));
-  if(leftBtn)   leftBtn.addEventListener('click', ()=>setCameraMode('left'));
-  if(topBtn)    topBtn.addEventListener('click',  ()=>setCameraMode('top'));
-  if(followBtn) followBtn.addEventListener('click',()=>setCameraMode('follow'));
-  window.__CAM_MODE__ = 'iso';
+  if(isoBtn)isoBtn.addEventListener('click',()=>setCameraMode('iso'));
+  if(frontBtn)frontBtn.addEventListener('click',()=>setCameraMode('front'));
+  if(leftBtn)leftBtn.addEventListener('click',()=>setCameraMode('left'));
+  if(topBtn)topBtn.addEventListener('click',()=>setCameraMode('top'));
+  window.__CAM_MODE__='iso';
 
-  function init3d(){
-    if(!HAS_3D || !plotDiv) return;
+function init3d(){
+  if(!HAS_3D || !plotDiv) return;
 
-    let data;
-    if (HAS_CAN3D) {
-      data = [{
-        type: 'scatter3d',
-        mode: 'markers',
-        x: [0], y: [0], z: [0],
-        marker: { size: 3 },
-        showlegend: false
-      }];
-    } else if (HAS_POSE) {
-      // 0..2: axes lines; 3..5: cones; 6..8: labels
-      data = [
-        {type:'scatter3d', mode:'lines', x:[0,1], y:[0,0], z:[0,0], line:{width:6, color:AX_X}, showlegend:false},
-        {type:'scatter3d', mode:'lines', x:[0,0], y:[0,1], z:[0,0], line:{width:6, color:AX_Y}, showlegend:false},
-        {type:'scatter3d', mode:'lines', x:[0,0], y:[0,0], z:[0,1], line:{width:6, color:AX_Z}, showlegend:false},
+  let data = [];
+  // default layout; branches can add to it (e.g., annotations)
+  let layout = { margin:{l:0,r:0,t:0,b:0}, scene:{ dragmode:'orbit', camera:camera } };
 
-        {type:'cone', x:[1], y:[0], z:[0], u:[-1], v:[0],  w:[0],  anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_X],[1,AX_X]]},
-        {type:'cone', x:[0], y:[1], z:[0], u:[0],  v:[-1], w:[0],  anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_Y],[1,AX_Y]]},
-        {type:'cone', x:[0], y:[0], z:[1], u:[0],  v:[0],  w:[-1], anchor:'tip', sizemode:'absolute', sizeref:0.18, showscale:false, colorscale:[[0,AX_Z],[1,AX_Z]]},
+  if (HAS_CAN3D) {
+    data = [
+      { type:'scatter3d', mode:'markers', x:[0], y:[0], z:[0], marker:{size:3}, showlegend:false }
+    ];
 
-        {type:'scatter3d', mode:'text', x:[1.08], y:[0],    z:[0],    text:['pitch (X)'], textfont:{size:12, color:'#333'}, showlegend:false},
-        {type:'scatter3d', mode:'text', x:[0],    y:[1.08], z:[0],    text:['yaw (Y)'],   textfont:{size:12, color:'#333'}, showlegend:false},
-        {type:'scatter3d', mode:'text', x:[0],    y:[0],    z:[1.08], text:['roll (Z)'],  textfont:{size:12, color:'#333'}, showlegend:false},
-      ];
-    } else if (HAS_EXPR && EXPR && EXPR.ge_count>0) {
-      const colorway = ["#636EFA","#EF553B","#00CC96","#AB63FA","#FFA15A","#19D3F3","#FF6692","#B6E880","#FF97FF","#FECB52"];
-      data = [];
-      // progressive lines: X=Frame, Y=Value (UP), Z=GE index (depth)
-      for (let g=0; g<EXPR.ge_count; g++){
-        data.push({
-          type:'scatter3d',
-          mode:'lines',
-          x:[0.0],                          // Frame
-          y:[EXPR.line_z_by_ge[g][0]],      // Value  -> Y
-          z:[g],                            // GE idx -> Z
-          line:{width:2, color:colorway[g % colorway.length]},
-          hovertemplate:`t=%{x}<br>${(EXPR.ge_cols && EXPR.ge_cols[g]) ? EXPR.ge_cols[g] : ('GE '+g)}: %{y}<extra></extra>`,
-          showlegend:false
-        });
-      }
-      // moving marker row at current frame across all GEs
+  } else if (HAS_POSE) {
+    // Axis lines
+  data = [
+    {type:'scatter3d', mode:'lines', x:[0,1], y:[0,0], z:[0,0], line:{width:6, color:AX_X}, showlegend:false},
+    {type:'scatter3d', mode:'lines', x:[0,0], y:[0,1], z:[0,0], line:{width:6, color:AX_Y}, showlegend:false},
+    {type:'scatter3d', mode:'lines', x:[0,0], y:[0,0], z:[0,1], line:{width:6, color:AX_Z}, showlegend:false},
+
+    // Arrowheads as cones anchored at endpoints
+    {type:'cone', x:[1], y:[0], z:[0],
+      u:[0.2], v:[0], w:[0],
+      anchor:'tip',             // attach cone base at (1,0,0)
+      colorscale:[[0, AX_X],[1, AX_X]],
+      sizemode:'absolute', sizeref:0.1, showscale:false},
+    {type:'cone', x:[0], y:[1], z:[0],
+      u:[0], v:[0.2], w:[0],
+      anchor:'tip',
+      colorscale:[[0, AX_Y],[1, AX_Y]],
+      sizemode:'absolute', sizeref:0.1, showscale:false},
+    {type:'cone', x:[0], y:[0], z:[1],
+      u:[0], v:[0], w:[0.2],
+      anchor:'tip',
+      colorscale:[[0, AX_Z],[1, AX_Z]],
+      sizemode:'absolute', sizeref:0.1, showscale:false}
+  ];
+
+    // Add labels
+    layout.scene.annotations = [
+      {x:1.1,y:0,  z:0,  text:"Yaw (X)",   showarrow:false, font:{color:AX_X,size:12}},
+      {x:0,  y:1.1,z:0,  text:"Pitch (Y)", showarrow:false, font:{color:AX_Y,size:12}},
+      {x:0,  y:0,  z:1.1,text:"Roll (Z)",  showarrow:false, font:{color:AX_Z,size:12}}
+    ];
+
+  } else if (HAS_EXPR_3D && EXPR && EXPR.ge_count>0) {
+    const colorway=["#636EFA","#EF553B","#00CC96","#AB63FA","#FFA15A","#19D3F3","#FF6692","#B6E880","#FF97FF","#FECB52"];
+    data = [];
+    for(let g=0; g<EXPR.ge_count; g++){
       data.push({
-        type:'scatter3d',
-        mode:'markers',
-        x: new Array(EXPR.ge_count).fill(0),     // frame=0
-        y: EXPR.marker_z_by_frame[0],            // values -> Y
-        z: [...Array(EXPR.ge_count).keys()],     // GE idx  -> Z
-        marker:{size:4, symbol:"circle"},
-        showlegend:false
+        type:'scatter3d', mode:'lines',
+        x:[0.0], y:[EXPR.line_z_by_ge[g][0]], z:[g],
+        line:{width:2, color:colorway[g%colorway.length]}, showlegend:false
       });
     }
-    // Compute nice ranges for expressions so the plot fits
-    let rng = null;
-    if (HAS_EXPR && EXPR && EXPR.ge_count > 0) {
-      let ymin = Infinity, ymax = -Infinity;
-      for (let g = 0; g < EXPR.ge_count; g++) {
-        const arr = EXPR.line_z_by_ge[g] || [];
-        for (let i = 0; i < arr.length; i++) {
-          const v = arr[i];
-          if (v < ymin) ymin = v;
-          if (v > ymax) ymax = v;
+    data.push({
+      type:'scatter3d', mode:'markers',
+      x:new Array(EXPR.ge_count).fill(0),
+      y:EXPR.marker_z_by_frame[0],
+      z:[...Array(EXPR.ge_count).keys()],
+      marker:{size:4}, showlegend:false
+    });
+  }
+
+  const config = {
+    staticPlot:false,
+    displayModeBar:true,
+    displaylogo:false,
+    scrollZoom:true,
+    responsive:true,
+    modeBarButtonsToRemove:['toImage']
+  };
+
+  Plotly.newPlot(plotDiv, data, layout, config);
+
+  if (plotDiv && typeof plotDiv.on === 'function') {
+    plotDiv.on('plotly_relayouting', () => { userInteracting = true; });
+    plotDiv.on('plotly_relayout',     (e) => { userInteracting = false; if (e && e['scene.camera']) camera = e['scene.camera']; });
+    plotDiv.on('plotly_doubleclick',  () => { userInteracting = false; });
+  }
+  plotDiv.addEventListener('wheel', (e)=>{ e.stopPropagation(); }, {passive:true});
+}
+
+  // --- NEW: Facial regions (explicit codes) + multi-select and multiple 2D plots ---
+  // Regions you asked for and their code prefixes/ranges:
+  //  Left Brow:  lb0–lb3
+  //  Right Brow: rb0–rb3
+  //  Nose:       no0–no3
+  //  Left Eye:   le0–le3
+  //  Right Eye:  re0–re3
+  //  Upper Lip:  ul0–ul4
+  //  Lower Lip:  ll0–ll6
+  const REGION_SPECS = [
+    {label:'Left Brow',  key:'lb', max:3},
+    {label:'Right Brow', key:'rb', max:3},
+    {label:'Nose',       key:'no', max:3},
+    {label:'Left Eye',   key:'le', max:3},
+    {label:'Right Eye',  key:'re', max:3},
+    {label:'Upper Lip',  key:'ul', max:4},
+    {label:'Lower Lip',  key:'ll', max:6},
+  ];
+
+  const sideCol   = document.getElementById('sideCol');
+  const regionCtrls = document.getElementById('regionCtrls');
+  const plots2dHost = document.getElementById('plots2dHost');
+
+  // selectedRegions: set of region keys (e.g., 'lb', 'rb', ...)
+  const selectedRegions = new Set();
+
+  function buildRegionGroups(cols){
+    const groups = {}; // key -> {label, idxs}
+    if(!cols || !cols.length) return groups;
+    const lower = cols.map(function(c){ return String(c||'').toLowerCase(); });
+
+    REGION_SPECS.forEach(function(spec){
+      const idxs = [];
+      for(let i=0;i<lower.length;i++){
+        // name EXACT match like lb0..lb3, but also accept startswith(spec.key) as fallback
+        const name = lower[i];
+        let matched = false;
+        for(let k=0;k<=spec.max;k++){
+          if (name === (spec.key + String(k))) { matched = true; break; }
         }
+        if (!matched && name.startsWith(spec.key)) matched = true;
+        if (matched) idxs.push(i);
       }
-      if (!isFinite(ymin)) ymin = 0;
-      if (!isFinite(ymax)) ymax = 1;
-      const pad = (ymax - ymin) * 0.08;  // a little headroom
-      rng = {
-        xmin: 0,
-        xmax: (EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length - 1] : 0),
-        ymin: ymin - pad,
-        ymax: ymax + pad,
-        zmin: -0.5,
-        zmax: EXPR.ge_count - 0.5
-      };
-    }
-
-    const layout = {
-      margin:{l:0,r:0,t:0,b:0},
-      scene:{
-        dragmode:'orbit',
-        aspectmode: HAS_EXPR ? 'cube' : 'data',
-        camera: camera,                         // up: Y
-        xaxis: HAS_EXPR
-          ? { title:'Frame', showgrid:true, zeroline:false,
-              range: (rng ? [rng.xmin, rng.xmax] : undefined) }
-          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
-
-        yaxis: HAS_EXPR
-          ? { title:'Value', showgrid:true, zeroline:false,
-              range: (rng ? [rng.ymin, rng.ymax] : undefined) }
-          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
-
-        zaxis: HAS_EXPR
-          ? { title:(EXPR && EXPR.ge_cols ? 'GE' : 'GE Index'), showgrid:true, zeroline:false,
-              range: (rng ? [rng.zmin, rng.zmax] : undefined) }
-          : { visible:false, showgrid:false, zeroline:false, showticklabels:false, showline:false },
+      if (idxs.length>0){
+        groups[spec.key] = {label: spec.label, idxs: idxs};
       }
-    };
+    });
+    return groups;
+  }
 
-    const config = {
-      staticPlot: false,
-      displayModeBar: true,
-      displaylogo: false,
-      scrollZoom: true,
-      responsive: true,
-      modeBarButtonsToRemove: ['toImage']
-    };
+  let REGION_GROUPS = {}; // filled in initSidebarAnd2D()
 
-    Plotly.newPlot(plotDiv, data, layout, config);
-
-    if (plotDiv && typeof plotDiv.on === 'function') {
-      // While user is dragging/rotating/panning, pause our restyles
-      plotDiv.on('plotly_relayouting', () => { userInteracting = true; });
-      plotDiv.on('plotly_relayout',     (e) => {
-        userInteracting = false;
-        if (e && e['scene.camera']) camera = e['scene.camera']; // keep camera state
-      });
-      plotDiv.on('plotly_doubleclick',  () => { userInteracting = false; });
+  function ensurePlotDiv(regionKey){
+    const id = 'plot2d-' + regionKey;
+    let div = document.getElementById(id);
+    if(!div){
+      const card = document.createElement('div');
+      card.className = 'plot2d-card';
+      div = document.createElement('div');
+      div.className = 'plot2d';
+      div.id = id;
+      card.appendChild(div);
+      plots2dHost.appendChild(card);
     }
-
-    // Interactivity fix: ensure wheel/pinch events go to Plotly (bind AFTER newPlot)
-    if (plotDiv) {
-      plotDiv.addEventListener('wheel', (e) => { e.stopPropagation(); }, { passive: true });
-      // iOS Safari pinch gestures
-      plotDiv.addEventListener('gesturestart', (e) => { e.preventDefault(); }, { passive: false });
-      plotDiv.addEventListener('gesturechange', (e) => { e.preventDefault(); }, { passive: false });
-      plotDiv.addEventListener('gestureend', (e) => { e.preventDefault(); }, { passive: false });
-    }
-
-    // Keep camera in sync
-    if (plotDiv && typeof plotDiv.on === 'function') {
-      plotDiv.on('plotly_relayout', (e) => { if (e && e['scene.camera']) camera = e['scene.camera']; });
+    return div;
+  }
+  function removePlotDiv(regionKey){
+    const id = 'plot2d-' + regionKey;
+    const div = document.getElementById(id);
+    if(div && div.parentElement){
+      div.parentElement.remove(); // remove card
     }
   }
 
+  function tracesForIdxs(idxs, withLegend){
+    const xs = EXPR.x_full || [];
+    const trs = [];
+    idxs.forEach(function(j){
+      trs.push({
+        type: 'scatter',
+        mode: 'lines',
+        x: xs,
+        y: EXPR.line_z_by_ge[j],
+        name: (EXPR.ge_cols && EXPR.ge_cols[j]) ? EXPR.ge_cols[j] : ('GE ' + j),
+        line: { width: 1 }
+      });
+    });
+    return trs;
+  }
+
+  function render2d(recreateLayout){
+    if(!(HAS_EXPR_ANY && EXPR)) return;
+    if(!plots2dHost) return;
+
+    // Show the 2D host
+    plots2dHost.style.display = 'block';
+
+    const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
+    const vline = [{type:'line',xref:'x',yref:'paper',x0:(EXPR.x_full && EXPR.x_full[t]!==undefined?EXPR.x_full[t]:t),x1:(EXPR.x_full && EXPR.x_full[t]!==undefined?EXPR.x_full[t]:t),y0:0,y1:1,line:{width:2,dash:'dot'}}];
+
+    // For each selected region: ensure plot exists and update
+    selectedRegions.forEach(function(rkey){
+      const grp = REGION_GROUPS[rkey];
+      if(!grp) return;
+      const div = ensurePlotDiv(rkey);
+
+      if (recreateLayout || !div.__inited) {
+        const traces = tracesForIdxs(grp.idxs, true);
+        const layout = {
+          margin:{l:50,r:10,t:28,b:30},
+          title: {text: grp.label, font:{size:12}},
+          xaxis:{title:'Frame', range:[0,(EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]},
+          yaxis:{title:'Value'},
+          showlegend:true,
+          shapes:vline
+        };
+        Plotly.newPlot(div, traces, layout, {displayModeBar:false,responsive:true});
+        div.__inited = true;
+      } else {
+        try { Plotly.relayout(div, {shapes:vline}); } catch(_){}
+      }
+    });
+
+    // Remove plots for any regions that are no longer selected
+    const existing = Array.from(document.querySelectorAll('.plot2d'));
+    existing.forEach(function(d){
+      const id = d.id || '';
+      if(!id.startsWith('plot2d-')) return;
+      const rkey = id.replace('plot2d-','');
+      if(!selectedRegions.has(rkey)){
+        removePlotDiv(rkey);
+      }
+    });
+  }
+
+  function initSidebarAnd2D(){
+    if(!HAS_EXPR_ANY || !EXPR || !EXPR.ge_count) return;
+    if(sideCol){ sideCol.style.display='block'; }
+    if(plots2dHost){ plots2dHost.style.display='block'; }
+
+    REGION_GROUPS = buildRegionGroups(EXPR.ge_cols||[]);
+
+    if(regionCtrls){
+      regionCtrls.innerHTML='';
+      // No "All" button; only the explicit facial regions that exist in data
+      Object.keys(REGION_GROUPS).forEach(function(rkey){
+        const b=document.createElement('button');
+        b.className='btn-reg';
+        b.textContent = REGION_GROUPS[rkey].label;
+        b.dataset.rkey = rkey;
+        b.addEventListener('click', function(){
+          const key = this.dataset.rkey;
+          if(selectedRegions.has(key)){
+            selectedRegions.delete(key);
+            this.classList.remove('active');
+          }else{
+            selectedRegions.add(key);
+            this.classList.add('active');
+          }
+          // Rebuild the plot list when selection changes
+          render2d(true);
+        });
+        regionCtrls.appendChild(b);
+      });
+    }
+
+    // Optional: preselect none (user will click). If you want a default, uncomment:
+    // const firstKey = Object.keys(REGION_GROUPS)[0]; if(firstKey){ selectedRegions.add(firstKey); regionCtrls.querySelector('[data-rkey="'+firstKey+'"]').classList.add('active'); }
+
+    // initial empty render (no plots until user selects)
+    render2d(true);
+  }
+
+  // ---- Update 3D (unchanged; just keep 2D vertical line in sync if plots exist) ----
   function update3d(frame){
     if(!HAS_3D || !plotDiv) return;
     if (userInteracting) return;
 
     if (HAS_CAN3D) {
-      const pts = can3dByFrame[frame];
-      if(!pts) return;
-      const x=[],y=[],z=[];
-      for(const p of pts){ x.push(p[0]||0); y.push(p[1]||0); z.push(-(p[2])||0); }
+      const pts = can3dByFrame[frame]; if(!pts) return;
+      const x=[],y=[],z=[]; for(const p of pts){ x.push(p[0]||0); y.push(p[1]||0); z.push(-(p[2])||0); }
       try { Plotly.restyle(plotDiv, {x:[x], y:[y], z:[z]}); } catch(_){}
       return;
     }
-
     if (HAS_POSE) {
-      const pose = poseByFrame[frame];
-      if(!pose || pose.length<3) return;
-      let rx = toRad(pose[0] || 0);  // pitch (X)
-      let ry = toRad(pose[1] || 0);  // yaw   (Y)
-      let rz = toRad(pose[2] || 0);  // roll  (Z)
-      // Axis convention to match video: invert yaw & roll
-      ry = -ry; rz = -rz;
-
-      const R = eulerToRot(rx,ry,rz);
-      const L = 1.0;
-      const ex = applyR(R,[L,0,0]);
-      const ey = applyR(R,[0,L,0]);
-      const ez = applyR(R,[0,0,L]);
-      const lx = [ex[0]*1.08, ex[1]*1.08, ex[2]*1.08];
-      const ly = [ey[0]*1.08, ey[1]*1.08, ey[2]*1.08];
-      const lz = [ez[0]*1.08, ez[1]*1.08, ez[2]*1.08];
-
+      const pose = poseByFrame[frame]; if(!pose || pose.length<3) return;
+      let rx = toRad(pose[0]||0), ry = -toRad(pose[1]||0), rz = -toRad(pose[2]||0);
+      const R = eulerToRot(rx,ry,rz), L=1.0, ex=applyR(R,[L,0,0]), ey=applyR(R,[0,L,0]), ez=applyR(R,[0,0,L]);
       try {
-        // lines
-        Plotly.restyle(plotDiv, {x:[[0,ex[0]]], y:[[0,ex[1]]], z:[[0,ex[2]]], 'line.color':AX_X}, [0]);
-        Plotly.restyle(plotDiv, {x:[[0,ey[0]]], y:[[0,ey[1]]], z:[[0,ey[2]]], 'line.color':AX_Y}, [1]);
-        Plotly.restyle(plotDiv, {x:[[0,ez[0]]], y:[[0,ez[1]]], z:[[0,ez[2]]], 'line.color':AX_Z}, [2]);
-
-        // cones
-        Plotly.restyle(plotDiv, {x:[[ex[0]]], y:[[ex[1]]], z:[[ex[2]]], u:[[-ex[0]]], v:[[-ex[1]]], w:[[-ex[2]]]}, [3]);
-        Plotly.restyle(plotDiv, {x:[[ey[0]]], y:[[ey[1]]], z:[[ey[2]]], u:[[-ey[0]]], v:[[-ey[1]]], w:[[-ey[2]]]}, [4]);
-        Plotly.restyle(plotDiv, {x:[[ez[0]]], y:[[ez[1]]], z:[[ez[2]]], u:[[-ez[0]]], v:[[-ez[1]]], w:[[-ez[2]]]}, [5]);
-
-        // labels
-        Plotly.restyle(plotDiv, {x:[[lx[0]]], y:[[lx[1]]], z:[[lx[2]]]}, [6]);
-        Plotly.restyle(plotDiv, {x:[[ly[0]]], y:[[ly[1]]], z:[[ly[2]]]}, [7]);
-        Plotly.restyle(plotDiv, {x:[[lz[0]]], y:[[lz[1]]], z:[[lz[2]]]}, [8]);
+        Plotly.restyle(plotDiv,{x:[[0,ex[0]]],y:[[0,ex[1]]],z:[[0,ex[2]]]},[0]);
+        Plotly.restyle(plotDiv,{x:[[0,ey[0]]],y:[[0,ey[1]]],z:[[0,ey[2]]]},[1]);
+        Plotly.restyle(plotDiv,{x:[[0,ez[0]]],y:[[0,ez[1]]],z:[[0,ez[2]]]},[2]);
       } catch(_){}
-
-      if (window.__CAM_MODE__ === 'follow') {
-        const cam = cameraFollowFromR(R, 1.6);
-        camera = cam;
-        try { Plotly.relayout(plotDiv, {'scene.camera': cam}); } catch(_){}
-      }
       return;
     }
-
-    // Expressions mode
-    if (HAS_EXPR && EXPR && EXPR.ge_count>0) {
+    if (HAS_EXPR_3D && EXPR && EXPR.ge_count>0) {
       const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
-      const idxs = []; for (let g=0; g<EXPR.ge_count; g++) idxs.push(g);
-
-      const xs=[], ys=[], zs=[];
-      for (let g=0; g<EXPR.ge_count; g++){
+      const xs=[],ys=[],zs=[];
+      for(let g=0; g<EXPR.ge_count; g++){
         const k = Math.min(t+1, EXPR.x_full.length);
-        xs.push(EXPR.x_full.slice(0,k));              // X = frames 0..t
-        ys.push(EXPR.line_z_by_ge[g].slice(0,k));     // Y = values (UP)
-        zs.push(new Array(k).fill(EXPR.y_const[g]));  // Z = GE index
+        xs.push(EXPR.x_full.slice(0,k)); ys.push(EXPR.line_z_by_ge[g].slice(0,k)); zs.push(new Array(k).fill(g));
       }
-      try { Plotly.restyle(plotDiv, {x:xs, y:ys, z:zs}, idxs); } catch(_){}
-
-      // moving marker row at current frame
-      const mx = new Array(EXPR.ge_count).fill(t);        // X = current frame
-      const my = (EXPR.marker_z_by_frame[t]||[]).slice(); // Y = values
-      const mz = EXPR.y_const.slice();                    // Z = GE indices
+      try { Plotly.restyle(plotDiv, {x:xs,y:ys,z:zs}, [...Array(EXPR.ge_count).keys()]); } catch(_){}
+      const mx=new Array(EXPR.ge_count).fill(t), my=(EXPR.marker_z_by_frame[t]||[]).slice(), mz=EXPR.y_const.slice();
       try { Plotly.restyle(plotDiv, {x:[mx], y:[my], z:[mz]}, [EXPR.ge_count]); } catch(_){}
+      // keep 2D vertical lines in sync if any 2D plots are showing
+      render2d(false);
     }
   }
 
-  // ---- Export (single PNG: title + left pane + right pane) ----
+  // ---- Export (same behavior as your version) ----
   if (exportBtn) exportBtn.addEventListener('click', () => { exportComposite().catch(()=>{}); });
-
   async function exportComposite(){
     let titleText = (typeof window.__EXPORT_TITLE__ === 'string' && window.__EXPORT_TITLE__.trim())
         ? window.__EXPORT_TITLE__.trim()
         : ((document.querySelector('h2.title')?.textContent || '').trim());
 
-    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_) {}
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_){}
 
     const left = document.createElement('canvas');
     left.width  = view.width;
@@ -4124,7 +3413,7 @@ __PLOTLY_TAG__
       octx.fillStyle = '#111';
       octx.textAlign = 'center';
       octx.textBaseline = 'top';
-      octx.font = `${titleSize}px Helvetica, Arial, sans-serif`;
+      octx.font = titleSize + 'px Helvetica, Arial, sans-serif';
       octx.fillText(titleText, outW/2, PAD_Y);
     }
 
@@ -4144,7 +3433,7 @@ __PLOTLY_TAG__
     document.body.appendChild(a); a.click(); a.remove();
   }
 
-  // ---- Main draw loop (privacy + overlays) ----
+  // ---- Main draw loop (unchanged for video/overlays) ----
   function draw(){
     const dpr = window.devicePixelRatio || 1;
     const targetW = view.width / dpr, targetH = view.height / dpr;
@@ -4155,7 +3444,8 @@ __PLOTLY_TAG__
     const frame = durFrames ? Math.max(0, Math.min(rawFrame, durFrames-1)) : Math.max(0, rawFrame);
 
     const vw = vid.videoWidth || 1, vh = vid.videoHeight || 1;
-    const {lands, rects} = ensureAndGetDataFor(frame);
+    const data = ensureAndGetDataFor(frame);
+    const lands = data.lands, rects = data.rects;
 
     // crop selection (prefer rects, then lands, else last crop, else full)
     let crop = null;
@@ -4164,8 +3454,8 @@ __PLOTLY_TAG__
     else if (lastCrop) { crop = lastCrop; }
     else { crop = [0,0,vw,vh]; }
 
-    const [sx,sy,sw,sh] = crop
-    const s = Math.max(targetW/sw, targetH/sh); 
+    const sx=crop[0], sy=crop[1], sw=crop[2], sh=crop[3];
+    const s = Math.max(targetW/sw, targetH/sh);
     const drawW = Math.ceil(sw * s), drawH = Math.ceil(sh * s);
     const dx = Math.floor((targetW - drawW) / 2), dy = Math.floor((targetH - drawH) / 2);
 
@@ -4173,7 +3463,6 @@ __PLOTLY_TAG__
     octx.clearRect(0,0,overlay.width,overlay.height);
 
     try { vctx.drawImage(vid, sx, sy, sw, sh, dx, dy, drawW, drawH); } catch(e){}
-
 
     if (enableHide) {
       vctx.save(); vctx.globalAlpha = 1; vctx.fillStyle = '#fff';
@@ -4202,31 +3491,16 @@ __PLOTLY_TAG__
     requestAnimationFrame(draw);
   }
 
-  // Keys: space play/pause, r rects, l lands, b blur, h hide, e export, i/f/l/t/o views
-  window.addEventListener('keydown',e=>{
-    const k=(e.key||'').toLowerCase();
-    if(k===' '){e.preventDefault();vid.paused?vid.play():vid.pause();}
-    else if(k==='r'){showRects=!showRects;updateBtns();}
-    else if(k==='l'){showLands=!showLands;updateBtns();}
-    else if(k==='b'){enableBlur=!enableBlur; if(enableBlur) enableHide=false; updateBtns();}
-    else if(k==='h'){enableHide=!enableHide; if(enableHide) enableBlur=false; updateBtns();}
-    else if(k==='e'){exportComposite().catch(()=>{});}
-    else if(k==='i'){if(!HAS_EXPR) setCameraMode('iso');}
-    else if(k==='f'){if(!HAS_EXPR) setCameraMode('front');}
-    else if(k==='o'){if(!HAS_EXPR) setCameraMode('follow');}
-    else if(k==='t'){if(!HAS_EXPR) setCameraMode('top');}
-    else if(k==='k'){if(!HAS_EXPR) setCameraMode('left');}
-  });
-
+  // ---- Boot ----
   function start(){
     const dpr = window.devicePixelRatio || 1;
     for(const c of [view,overlay]){c.style.width=BOX_W+'px';c.style.height=BOX_H+'px';c.width=Math.round(BOX_W*dpr);c.height=Math.round(BOX_H*dpr);}
     try{ if(HAS_3D) init3d(); }catch(_){}
+    if(HAS_EXPR_ANY) initSidebarAnd2D();
     updateBtns();
     if(USE_CHUNKS) ensureChunksForFrame(0);
     requestAnimationFrame(draw);
     requestAnimationFrame(tickUI);
-
     resizeCanvases();
     setTimeout(resizeCanvases, 0);
   }
@@ -4236,32 +3510,30 @@ __PLOTLY_TAG__
     try{ vid.play().catch(()=>{}); }catch(_){}
     start();
   });
-
   window.addEventListener('resize',resizeCanvases);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) resizeCanvases();
-  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resizeCanvases(); });
 </script>
 </body></html>
 """
-        # Initial labels should also show the action (opposite of initial state)
+        # Toolbar buttons (unchanged)
         rect_btn   = "<button id='rectBtn' class='btn'>Rectangles: Off</button>" if has_rects else ""
         land_btn   = "<button id='landBtn' class='btn'>Landmarks: Off</button>" if has_lands else ""
         blur_btn = "<button id='blurBtn' class='btn'>Blur Face</button>"
         hide_btn = "<button id='hideBtn' class='btn'>Hide Face</button>"
         export_btn = "<button id='exportBtn' class='btn'>Export PNG</button>"
 
-        # Right column: plot + (pose/can3d) view buttons beneath; hide buttons if expressions-only
+        # Right column: plot + view buttons beneath (unchanged logic)
         if has_3d_any:
             plot_wrap = (
-            "<div class='plot-col' style='width:__PLOT_W__px'>"
-            "  <div class='plot-wrap'><div id='plot3d'></div></div>"
-            f"  <div class='plot-controls' style='display:{'none' if (has_expr and not (has_can3d or has_pose)) else 'flex'}'>"
-            "    <button id='isoBtn' class='btn btn-mini'>ISO</button>"
-            "    <button id='frontBtn' class='btn btn-mini'>Front</button>"
-            "    <button id='leftBtn' class='btn btn-mini'>Left</button>"
-            "    <button id='topBtn' class='btn btn-mini'>Top</button>"
-            "    <button id='followBtn' class='btn btn-mini'>Follow</button>"
+            "<div class='sticky-col'>"
+            "  <div class='plot-col'>"
+            "    <div class='plot-wrap'><div id='plot3d'></div></div>"
+            "    <div class='plot-controls'>"
+            "      <button id='isoBtn' class='btn btn-mini'>ISO</button>"
+            "      <button id='frontBtn' class='btn btn-mini'>Front</button>"
+            "      <button id='leftBtn' class='btn btn-mini'>Left</button>"
+            "      <button id='topBtn' class='btn btn-mini'>Top</button>"
+            "    </div>"
             "  </div>"
             "</div>"
             )
@@ -4270,7 +3542,15 @@ __PLOTLY_TAG__
             plot_wrap = ""
             plotly_tag = ""
 
-        plot_w = int(box_w * 1.6) if (has_expr and not (has_can3d or has_pose)) else int(box_w)
+        # Sidebar (only if expressions exist)
+        sidebar = (
+            "<div class='side-col' id='sideCol' style='display:none'>"
+            "  <div class='side-inner'>"
+            "    <div class='region-title'>Facial Regions</div>"
+            "    <div id='regionCtrls' class='region-controls'></div>"
+            "  </div>"
+            "</div>"
+        ) if has_expr_any else ""
 
         return (
             html_base
@@ -4278,7 +3558,10 @@ __PLOTLY_TAG__
             .replace("__REL_SRC__", rel_src)
             .replace("__BOX_W__", str(int(box_w)))
             .replace("__BOX_H__", str(int(box_h)))
-            .replace("__FPS__", f"{fps_val:.6f}")
+            .replace("__PLOT_W__", str(int(plot_w)))
+            .replace("__SIDE_W__", str(int(side_w)))
+            .replace("__PAGE_W__", str(int(page_w)))
+            .replace("__FPS__", f"{float(fps_val):.6f}")
             .replace("__USE_CHUNKS__", str(use_chunks).lower())
             .replace("__CHUNK_SIZE__", str(CHUNK_SIZE if use_chunks else 0))
             .replace("__RECT_CHUNK_STARTS__", _json.dumps(rect_chunk_starts))
@@ -4294,27 +3577,21 @@ __PLOTLY_TAG__
             .replace("__HAS_LANDS__", str(has_lands).lower())
             .replace("__HAS_CAN3D__", str(has_can3d).lower())
             .replace("__HAS_POSE__", str(has_pose).lower())
-            .replace("__POSE_UNITS__", "deg" if str(pose_units).lower().startswith("d") else "rad")
             .replace("__PLOT_WRAP__", plot_wrap)
+            .replace("__SIDEBAR__", sidebar)
             .replace("__PLOTLY_TAG__", plotly_tag)
             .replace("__RECT_BTN__", rect_btn)
             .replace("__LAND_BTN__", land_btn)
             .replace("__BLUR_BTN__", blur_btn)
             .replace("__HIDE_BTN__", hide_btn)
             .replace("__EXPORT_BTN__", export_btn)
-            # Expressions switches/payload
-            .replace("__PLOT_W__", str(plot_w))
-            .replace("__HAS_EXPR__", str(bool(has_expr)).lower())
-            .replace("__EXPR_JSON__", _json.dumps(expr_payload if has_expr else {}))
+            # expressions flags/payload
+            .replace("__HAS_EXPR_3D__", str(bool(has_expr_for_3d)).lower())
+            .replace("__HAS_EXPR_ANY__", str(bool(has_expr_any)).lower())
+            .replace("__POSE_UNITS__", "deg" if str(pose_units).lower().startswith("d") else "rad")
+            .replace("__EXPR_JSON__", _json.dumps(expr_payload if has_expr_any else {}))
         )
 
-    # Decide sizes
-    if fixed_portrait:
-        box_w, box_h = int(portrait_w), int(portrait_h)
-    else:
-        box_w, box_h = int(TS_W), int(TS_H)
-
-    html = _build_html(box_w, box_h)
-
+    html = _build_html(int(box_w), int(box_h))
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
