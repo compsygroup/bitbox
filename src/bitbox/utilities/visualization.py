@@ -1893,6 +1893,13 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
       display: flex;
       justify-content: center; /* center horizontally */
     }
+                             
+    .frame-counter {
+    margin-top: 6px;
+    font: 13px/1.4 monospace;
+    color: #333;
+    text-align: center;
+    }
     #plot {
       max-width: 95vw;
     }
@@ -2277,7 +2284,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
 def visualize_expressions_3d(
     expressions,
     out_dir: str = "bitbox_viz.html",
-    title: str = "Global Expressions over Time (3D)",
+    title: str = "Expressions over Time (3D)",
     video_path: Optional[str] = None,   # if provided -> use write_video_overlay_html
     smooth: int = 0,
     downsample: int = 1,
@@ -2382,7 +2389,6 @@ def visualize_expressions_3d(
             fps=fps,  
             video_w=vw,
             video_h=vh,
-            title=title,
             cushion_ratio=float(cushion_ratio),
             fixed_portrait=True,
             can3d_decimate=1,
@@ -2390,7 +2396,6 @@ def visualize_expressions_3d(
             expr_smooth=int(smooth or 0),
             expr_downsample=int(downsample or 1),
             expr_max_frames=int(max_frames or 360),
-            expr_title="Expressions (3D)",
         )
         return None  # HTML is written to out_path
 
@@ -2735,6 +2740,17 @@ def write_video_overlay_html(
     has_3d_any = has_can3d or has_pose or has_expr_for_3d
     has_expr_any = bool(has_expr_raw)  # governs new 2D plots + sidebar
 
+    local_prefixes = ('lb','rb','no','le','re','ul','ll')
+
+    cols_source = []
+    if expr_df is not None and not expr_df.empty:
+        cols_source = [str(c) for c in expr_df.columns if hasattr(expr_df, "columns")]
+    else:
+        cols_source = list(expr_payload.get('ge_cols') or [])
+
+    cols_lower = tuple(c.lower() for c in cols_source)
+    has_local_expr = any(any(name.startswith(p) for p in local_prefixes) for name in cols_lower)
+
     # Title
     if title == "Video Overlay":
         if has_can3d:
@@ -2742,7 +2758,8 @@ def write_video_overlay_html(
         elif has_pose:
             computed_title = "Video + Head Pose (3D axes)"
         elif has_expr_for_3d:
-            computed_title = expr_title or "Video + Expressions (3D)"
+            default_expr_title = "Local Expressions over Time (3D)" if has_local_expr else "Global Expressions over Time (3D)"
+            computed_title = expr_title or default_expr_title
         elif has_lands and not has_rects:
             computed_title = "Video with Landmarks"
         elif has_rects and not has_lands:
@@ -2763,7 +2780,12 @@ def write_video_overlay_html(
     # Right sidebar width for region buttons
     side_w = 140
     gap = 24
-    plot_w = int(box_w)  # keep 3D same width as video
+
+    if has_expr_for_3d:
+        plot_w = int(box_w * 1.5)  # 50% wider
+    else:
+        plot_w = int(box_w)
+    
     # overall width for full-width 2D plot under toolbar
     page_w = box_w + (gap if has_3d_any else 0) + (plot_w if has_3d_any else 0) + (gap if has_expr_any else 0) + (side_w if has_expr_any else 0)
 
@@ -2822,7 +2844,7 @@ def write_video_overlay_html(
   /* Full-width container for 2D plots */
   .page { width:__PAGE_W__px; max-width:__PAGE_W__px; }
   .plots2d-host { display:none; width:__PAGE_W__px; box-sizing:border-box; padding:0 8px 24px; }
-  .plot2d-card { width:100%; height:240px; margin:14px 0; }
+  .plot2d-card { width:100%; height:240px; margin:30px 0; }
   .plot2d { width:100%; height:100%; }
 </style>
 </head>
@@ -2839,6 +2861,7 @@ def write_video_overlay_html(
           <canvas id="view"></canvas>
           <canvas id="overlay"></canvas>
         </div>
+        <div id="frameCounter" class="frame-counter">Frame: 0</div>
       </div>
     </div>
 
@@ -2893,7 +2916,7 @@ def write_video_overlay_html(
   const AX_Y = 'rgb(255,127,14)';
   const AX_Z = 'rgb(44,160,44)';
 
-  const CAM_ISO   = { eye:{x:1.35, y:1.35, z:-1.35}, up:{x:0, y:1, z:0} };
+  const CAM_ISO   = { eye:{x:1.35, y:1.35, z:1.35}, up:{x:0, y:1, z:0} };
   const CAM_FRONT = { eye:{x:0.001, y:0.001, z:2.2}, up:{x:0, y:1, z:0} };
   const CAM_LEFT  = { eye:{x:2.2,  y:0.0,   z:0.001}, up:{x:0, y:1, z:0} };
   const CAM_TOP   = { eye:{x:0.0,  y:2.2,   z:0.001}, up:{x:0, y:0, z:-1} };
@@ -3075,22 +3098,34 @@ function init3d(){
   // default layout; branches can add to it (e.g., annotations)
   let layout = { margin:{l:0,r:0,t:0,b:0}, scene:{ dragmode:'orbit', camera:camera } };
 
-  if (HAS_CAN3D) {
-    data = [
-      { type:'scatter3d', mode:'markers', x:[0], y:[0], z:[0], marker:{size:3}, showlegend:false }
-    ];
+if (HAS_CAN3D) {
+  data = [
+    { type:'scatter3d', mode:'markers', x:[0], y:[0], z:[0], marker:{size:3}, showlegend:false }
+  ];
 
-  } else if (HAS_POSE) {
-    // Axis lines
+  // Hide all axes for CAN3D
+  layout = {
+    margin: { l:0, r:0, t:0, b:0 },
+    scene: {
+      dragmode: 'orbit',
+      camera: camera,
+      xaxis: { visible: false },
+      yaxis: { visible: false },
+      zaxis: { visible: false }
+    }
+  };
+}
+else if (HAS_POSE) {
+  // Axis lines
   data = [
     {type:'scatter3d', mode:'lines', x:[0,1], y:[0,0], z:[0,0], line:{width:6, color:AX_X}, showlegend:false},
     {type:'scatter3d', mode:'lines', x:[0,0], y:[0,1], z:[0,0], line:{width:6, color:AX_Y}, showlegend:false},
     {type:'scatter3d', mode:'lines', x:[0,0], y:[0,0], z:[0,1], line:{width:6, color:AX_Z}, showlegend:false},
 
-    // Arrowheads as cones anchored at endpoints
+    // Arrowheads (cones at endpoints)
     {type:'cone', x:[1], y:[0], z:[0],
       u:[0.2], v:[0], w:[0],
-      anchor:'tip',             // attach cone base at (1,0,0)
+      anchor:'tip',  // tip of arrow at (1,0,0)
       colorscale:[[0, AX_X],[1, AX_X]],
       sizemode:'absolute', sizeref:0.1, showscale:false},
     {type:'cone', x:[0], y:[1], z:[0],
@@ -3105,31 +3140,94 @@ function init3d(){
       sizemode:'absolute', sizeref:0.1, showscale:false}
   ];
 
-    // Add labels
-    layout.scene.annotations = [
-      {x:1.1,y:0,  z:0,  text:"Yaw (X)",   showarrow:false, font:{color:AX_X,size:12}},
-      {x:0,  y:1.1,z:0,  text:"Pitch (Y)", showarrow:false, font:{color:AX_Y,size:12}},
-      {x:0,  y:0,  z:1.1,text:"Roll (Z)",  showarrow:false, font:{color:AX_Z,size:12}}
-    ];
+  // Labels
+  layout.scene.annotations = [
+    {x:1.1, y:0,   z:0,   text:"Yaw (X)",   showarrow:false, font:{color:AX_X, size:12}},
+    {x:0,   y:1.1, z:0,   text:"Pitch (Y)", showarrow:false, font:{color:AX_Y, size:12}},
+    {x:0,   y:0,   z:1.1, text:"Roll (Z)",  showarrow:false, font:{color:AX_Z, size:12}}
+  ];
 
-  } else if (HAS_EXPR_3D && EXPR && EXPR.ge_count>0) {
-    const colorway=["#636EFA","#EF553B","#00CC96","#AB63FA","#FFA15A","#19D3F3","#FF6692","#B6E880","#FF97FF","#FECB52"];
-    data = [];
-    for(let g=0; g<EXPR.ge_count; g++){
-      data.push({
-        type:'scatter3d', mode:'lines',
-        x:[0.0], y:[EXPR.line_z_by_ge[g][0]], z:[g],
-        line:{width:2, color:colorway[g%colorway.length]}, showlegend:false
-      });
-    }
+  // Hide axes completely
+  layout.scene.xaxis = { visible:false };
+  layout.scene.yaxis = { visible:false };
+  layout.scene.zaxis = { visible:false };
+}
+ else if (HAS_EXPR_3D && EXPR && EXPR.ge_count > 0) {
+  // --- build traces ---
+  const colorway = ["#636EFA","#EF553B","#00CC96","#AB63FA","#FFA15A","#19D3F3","#FF6692","#B6E880","#FF97FF","#FECB52"];
+
+  // spread stacks farther apart so labels & lines breathe
+  const Z_GAP = 8; // try 5–8 if still tight
+
+  data = [];
+  for (let g = 0; g < EXPR.ge_count; g++) {
+    const zConst = new Array(1).fill(g * Z_GAP); // seed; we’ll expand during updates
     data.push({
-      type:'scatter3d', mode:'markers',
-      x:new Array(EXPR.ge_count).fill(0),
-      y:EXPR.marker_z_by_frame[0],
-      z:[...Array(EXPR.ge_count).keys()],
-      marker:{size:4}, showlegend:false
+      type: 'scatter3d',
+      mode: 'lines',
+      x: [0.0],
+      y: [EXPR.line_z_by_ge[g][0]],
+      z: zConst,
+      line: { width: 2, color: colorway[g % colorway.length] },
+      showlegend: false,
+      hoverinfo: 'x+y+z'
     });
   }
+  // moving markers (current frame across all expressions)
+  data.push({
+    type: 'scatter3d',
+    mode: 'markers',
+    x: new Array(EXPR.ge_count).fill(0),
+    y: EXPR.marker_z_by_frame[0],
+    z: [...Array(EXPR.ge_count).keys()].map(i => i * Z_GAP),
+    marker: { size: 4 },
+    showlegend: false,
+    hoverinfo: 'x+y+z'
+  });
+
+  // --- axis labels & ticks: map names to Z axis, not X ---
+  const exprLabels = (EXPR.ge_cols || []).map(String);
+  const zTickVals  = [...Array(EXPR.ge_count).keys()].map(i => i * Z_GAP);
+
+  // downsample label density if there are lots of expressions
+  const MAX_Z_TICKS = 18;                   // adjust if you have room for more
+  let tickEvery = Math.ceil(exprLabels.length / MAX_Z_TICKS);
+  if (tickEvery < 1) tickEvery = 1;
+  const zTickValsShown  = zTickVals.filter((_, i) => i % tickEvery === 0);
+  const zTickTextShown  = exprLabels.filter((_, i) => i % tickEvery === 0);
+
+  // set layout (note: titles now correct per axis)
+  layout = {
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+    scene: {
+      dragmode: 'orbit',
+      camera: camera,
+      xaxis: {
+        title: 'Frame',
+        tickmode: 'auto',
+        nticks: 6,
+        tickfont: { size: 10 },
+        automargin: true
+      },
+      yaxis: {
+        title: 'Value',
+        tickfont: { size: 10 },
+        automargin: true
+      },
+      zaxis: {
+        title: 'Expression',
+        tickmode: 'array',
+        tickvals: zTickValsShown,
+        ticktext: zTickTextShown,
+        tickfont: { size: 10 },
+        automargin: true
+      }
+    }
+  };
+
+  // make Z_GAP available in update3d()
+  window.__EXPR_Z_GAP__ = Z_GAP;
+}
 
   const config = {
     staticPlot:false,
@@ -3259,12 +3357,22 @@ function init3d(){
       if (recreateLayout || !div.__inited) {
         const traces = tracesForIdxs(grp.idxs, true);
         const layout = {
-          margin:{l:50,r:10,t:28,b:30},
-          title: {text: grp.label, font:{size:12}},
-          xaxis:{title:'Frame', range:[0,(EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]},
-          yaxis:{title:'Value'},
-          showlegend:true,
-          shapes:vline
+        margin:{l:50,r:10,t:28,b:30},
+        font: {family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+        title: {text: grp.label, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:12}},
+        xaxis:{
+            title:'Frame',
+            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+            range:[0,(EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]
+        },
+        yaxis:{
+            title:'Value',
+            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"}
+        },
+        showlegend:true,
+        shapes:vline
         };
         Plotly.newPlot(div, traces, layout, {displayModeBar:false,responsive:true});
         div.__inited = true;
@@ -3285,43 +3393,79 @@ function init3d(){
     });
   }
 
-  function initSidebarAnd2D(){
-    if(!HAS_EXPR_ANY || !EXPR || !EXPR.ge_count) return;
-    if(sideCol){ sideCol.style.display='block'; }
-    if(plots2dHost){ plots2dHost.style.display='block'; }
+function initSidebarAnd2D(){
+  if (!HAS_EXPR_ANY || !EXPR || !EXPR.ge_count) return;
 
-    REGION_GROUPS = buildRegionGroups(EXPR.ge_cols||[]);
+  const cols = (EXPR.ge_cols || []).map(c => String(c).toLowerCase());
+  const LOCAL_PREFIXES = ['lb','rb','no','le','re','ul','ll'];
+  const hasLocal = cols.some(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
 
-    if(regionCtrls){
-      regionCtrls.innerHTML='';
-      // No "All" button; only the explicit facial regions that exist in data
-      Object.keys(REGION_GROUPS).forEach(function(rkey){
-        const b=document.createElement('button');
-        b.className='btn-reg';
-        b.textContent = REGION_GROUPS[rkey].label;
-        b.dataset.rkey = rkey;
-        b.addEventListener('click', function(){
-          const key = this.dataset.rkey;
-          if(selectedRegions.has(key)){
-            selectedRegions.delete(key);
-            this.classList.remove('active');
-          }else{
-            selectedRegions.add(key);
-            this.classList.add('active');
-          }
-          // Rebuild the plot list when selection changes
-          render2d(true);
-        });
-        regionCtrls.appendChild(b);
-      });
-    }
-
-    // Optional: preselect none (user will click). If you want a default, uncomment:
-    // const firstKey = Object.keys(REGION_GROUPS)[0]; if(firstKey){ selectedRegions.add(firstKey); regionCtrls.querySelector('[data-rkey="'+firstKey+'"]').classList.add('active'); }
-
-    // initial empty render (no plots until user selects)
-    render2d(true);
+  // If not local → hide and clear any content
+  const sideInner = document.getElementById('sideInner');
+  if (!hasLocal) {
+    if (sideCol) sideCol.style.display = 'none';
+    if (plots2dHost) plots2dHost.style.display = 'none';
+    if (sideInner) sideInner.innerHTML = '';
+    return;
   }
+
+  // Show containers
+  if (sideCol) sideCol.style.display = 'block';
+  if (plots2dHost) plots2dHost.style.display = 'block';
+
+  // Rebuild the sidebar content (title + controls) from scratch
+  if (sideInner) {
+    sideInner.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'region-title';
+    title.textContent = 'Facial Regions';
+    sideInner.appendChild(title);
+
+    const ctrls = document.createElement('div');
+    ctrls.id = 'regionCtrls';
+    ctrls.className = 'region-controls';
+    sideInner.appendChild(ctrls);
+  }
+
+  // Build groups using the full ge_cols but filtered to local prefixes
+  const localCols = cols.filter(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
+  REGION_GROUPS = buildRegionGroups(localCols);
+
+  // If nothing grouped → hide & clear
+  if (!REGION_GROUPS || Object.keys(REGION_GROUPS).length === 0) {
+    if (sideCol) sideCol.style.display = 'none';
+    if (plots2dHost) plots2dHost.style.display = 'none';
+    if (sideInner) sideInner.innerHTML = '';
+    return;
+  }
+
+  const regionCtrls = document.getElementById('regionCtrls');
+  if (regionCtrls){
+    regionCtrls.innerHTML = '';
+    Object.keys(REGION_GROUPS).forEach(function(rkey){
+      const b = document.createElement('button');
+      b.className = 'btn-reg';
+      b.textContent = REGION_GROUPS[rkey].label;
+      b.dataset.rkey = rkey;
+      b.addEventListener('click', function(){
+        const key = this.dataset.rkey;
+        if (selectedRegions.has(key)){
+          selectedRegions.delete(key);
+          this.classList.remove('active');
+        } else {
+          selectedRegions.add(key);
+          this.classList.add('active');
+        }
+        render2d(true);
+      });
+      regionCtrls.appendChild(b);
+    });
+  }
+
+  // initial empty render (no plots until user selects)
+  render2d(true);
+}
 
   // ---- Update 3D (unchanged; just keep 2D vertical line in sync if plots exist) ----
   function update3d(frame){
@@ -3335,16 +3479,59 @@ function init3d(){
       return;
     }
     if (HAS_POSE) {
-      const pose = poseByFrame[frame]; if(!pose || pose.length<3) return;
-      let rx = toRad(pose[0]||0), ry = -toRad(pose[1]||0), rz = -toRad(pose[2]||0);
-      const R = eulerToRot(rx,ry,rz), L=1.0, ex=applyR(R,[L,0,0]), ey=applyR(R,[0,L,0]), ez=applyR(R,[0,0,L]);
-      try {
-        Plotly.restyle(plotDiv,{x:[[0,ex[0]]],y:[[0,ex[1]]],z:[[0,ex[2]]]},[0]);
-        Plotly.restyle(plotDiv,{x:[[0,ey[0]]],y:[[0,ey[1]]],z:[[0,ey[2]]]},[1]);
-        Plotly.restyle(plotDiv,{x:[[0,ez[0]]],y:[[0,ez[1]]],z:[[0,ez[2]]]},[2]);
-      } catch(_){}
-      return;
+    const pose = poseByFrame[frame]; 
+    if (!pose || pose.length < 3) return;
+
+    let rx = toRad(pose[0] || 0),
+        ry = -toRad(pose[1] || 0),
+        rz = -toRad(pose[2] || 0);
+
+    const R = eulerToRot(rx, ry, rz), 
+            L = 1.0, 
+            ex = applyR(R, [L, 0, 0]), 
+            ey = applyR(R, [0, L, 0]), 
+            ez = applyR(R, [0, 0, L]);
+
+    try {
+        // Update axis lines
+        Plotly.restyle(plotDiv, {x:[[0, ex[0]]], y:[[0, ex[1]]], z:[[0, ex[2]]]}, [0]);
+        Plotly.restyle(plotDiv, {x:[[0, ey[0]]], y:[[0, ey[1]]], z:[[0, ey[2]]]}, [1]);
+        Plotly.restyle(plotDiv, {x:[[0, ez[0]]], y:[[0, ez[1]]], z:[[0, ez[2]]]}, [2]);
+
+        // ---- Update arrowhead cones (indices 3,4,5) ----
+        function norm(v){ return Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]) || 1; }
+        function scale(v,s){ return [v[0]*s, v[1]*s, v[2]*s]; }
+        const coneLen = 0.18; // tweak arrow size
+
+        // X cone
+        {
+        const n = norm(ex); const dir = scale([ex[0]/n, ex[1]/n, ex[2]/n], coneLen);
+        Plotly.restyle(plotDiv, {
+            x:[[ex[0]]], y:[[ex[1]]], z:[[ex[2]]],
+            u:[[dir[0]]], v:[[dir[1]]], w:[[dir[2]]]
+        }, [3]);
+        }
+        // Y cone
+        {
+        const n = norm(ey); const dir = scale([ey[0]/n, ey[1]/n, ey[2]/n], coneLen);
+        Plotly.restyle(plotDiv, {
+            x:[[ey[0]]], y:[[ey[1]]], z:[[ey[2]]],
+            u:[[dir[0]]], v:[[dir[1]]], w:[[dir[2]]]
+        }, [4]);
+        }
+        // Z cone
+        {
+        const n = norm(ez); const dir = scale([ez[0]/n, ez[1]/n, ez[2]/n], coneLen);
+        Plotly.restyle(plotDiv, {
+            x:[[ez[0]]], y:[[ez[1]]], z:[[ez[2]]],
+            u:[[dir[0]]], v:[[dir[1]]], w:[[dir[2]]]
+        }, [5]);
+        }
+    } catch(_) {}
+
+    return; // <-- keep this
     }
+
     if (HAS_EXPR_3D && EXPR && EXPR.ge_count>0) {
       const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
       const xs=[],ys=[],zs=[];
@@ -3361,77 +3548,125 @@ function init3d(){
   }
 
   // ---- Export (same behavior as your version) ----
-  if (exportBtn) exportBtn.addEventListener('click', () => { exportComposite().catch(()=>{}); });
-  async function exportComposite(){
-    let titleText = (typeof window.__EXPORT_TITLE__ === 'string' && window.__EXPORT_TITLE__.trim())
-        ? window.__EXPORT_TITLE__.trim()
-        : ((document.querySelector('h2.title')?.textContent || '').trim());
+if (exportBtn) exportBtn.addEventListener('click', () => { exportComposite().catch(()=>{}); });
 
-    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_){}
+async function exportComposite(){
+  let titleText = (typeof window.__EXPORT_TITLE__ === 'string' && window.__EXPORT_TITLE__.trim())
+      ? window.__EXPORT_TITLE__.trim()
+      : ((document.querySelector('h2.title')?.textContent || '').trim());
 
-    const left = document.createElement('canvas');
-    left.width  = view.width;
-    left.height = view.height;
-    const lctx = left.getContext('2d');
-    lctx.drawImage(view, 0, 0);
-    lctx.drawImage(overlay, 0, 0);
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(_){}
 
-    let rightImg = null;
-    if (HAS_3D && typeof Plotly !== 'undefined' && plotDiv) {
-      const dpr = window.devicePixelRatio || 1;
-      const w = Math.max(1, Math.round(plotDiv.clientWidth  * dpr));
-      const h = Math.max(1, Math.round(plotDiv.clientHeight * dpr));
+  // 1) Left (video+overlay) → canvas snapshot
+  const left = document.createElement('canvas');
+  left.width  = view.width;
+  left.height = view.height;
+  const lctx = left.getContext('2d');
+  lctx.drawImage(view, 0, 0);
+  lctx.drawImage(overlay, 0, 0);
+
+  // 2) Right (3D plot) → image (if present)
+  let rightImg = null;
+  if (HAS_3D && typeof Plotly !== 'undefined' && plotDiv) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(plotDiv.clientWidth  * dpr));
+    const h = Math.max(1, Math.round(plotDiv.clientHeight * dpr));
+    try {
+      const dataUrl = await Plotly.toImage(plotDiv, { format:'png', width:w, height:h });
+      rightImg = await new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(img); img.src = dataUrl; });
+    } catch(_) {}
+  }
+
+  // 3) All visible 2D plots (the big stacked charts) → images
+  const twoDImgs = [];
+  if (HAS_EXPR_ANY && typeof Plotly !== 'undefined') {
+    const twoDNodes = Array.from(document.querySelectorAll('.plot2d'));
+    const dpr = window.devicePixelRatio || 1;
+    for (const div of twoDNodes) {
+      // only export plots that are currently displayed
+      const style = window.getComputedStyle(div);
+      if (style.display === 'none' || div.clientWidth === 0 || div.clientHeight === 0) continue;
+
+      const w = Math.max(1, Math.round(div.clientWidth  * dpr));
+      const h = Math.max(1, Math.round(div.clientHeight * dpr));
       try {
-        const dataUrl = await Plotly.toImage(plotDiv, { format:'png', width:w, height:h });
-        rightImg = await new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(img); img.src = dataUrl; });
+        const url = await Plotly.toImage(div, { format:'png', width:w, height:h });
+        const img = await new Promise((resolve) => { const im = new Image(); im.onload = () => resolve(im); im.src = url; });
+        twoDImgs.push(img);
       } catch(_) {}
     }
-
-    const dpr = window.devicePixelRatio || 1;
-    const GAP_X = Math.round(24 * dpr);
-    const PAD_X = Math.round(24 * dpr);
-    const PAD_Y = Math.round(20 * dpr);
-
-    const titleSize = Math.round(20 * dpr);
-    const lineH = Math.round(titleSize * 1.4);
-    const titleH = titleText ? (PAD_Y + lineH) : 0;
-
-    const contentW = left.width + (rightImg ? GAP_X + rightImg.width : 0);
-    const contentH = Math.max(left.height, rightImg ? rightImg.height : 0);
-
-    const outW = PAD_X + contentW + PAD_X;
-    const outH = PAD_Y + titleH + contentH + PAD_Y;
-
-    const out = document.createElement('canvas');
-    out.width = outW; out.height = outH;
-    const octx = out.getContext('2d');
-
-    octx.fillStyle = '#fff';
-    octx.fillRect(0, 0, outW, outH);
-
-    if (titleText) {
-      octx.fillStyle = '#111';
-      octx.textAlign = 'center';
-      octx.textBaseline = 'top';
-      octx.font = titleSize + 'px Helvetica, Arial, sans-serif';
-      octx.fillText(titleText, outW/2, PAD_Y);
-    }
-
-    const contentTop = PAD_Y + titleH;
-    const leftY = contentTop + Math.floor((contentH - left.height) / 2);
-    octx.drawImage(left, PAD_X, leftY);
-
-    if (rightImg) {
-      const rightX = PAD_X + left.width + GAP_X;
-      const rightY = contentTop + Math.floor((contentH - rightImg.height) / 2);
-      octx.drawImage(rightImg, rightX, rightY);
-    }
-
-    const a = document.createElement('a');
-    a.href = out.toDataURL('image/png');
-    a.download = 'video_3d_with_title.png';
-    document.body.appendChild(a); a.click(); a.remove();
   }
+
+  // 4) Compose the final export (toolbar is not drawn at all)
+  const dpr = window.devicePixelRatio || 1;
+  const GAP_X = Math.round(24 * dpr);   // between left and right
+  const GAP_Y = Math.round(16 * dpr);   // between rows / stacked 2D plots
+  const PAD_X = Math.round(24 * dpr);
+  const PAD_Y = Math.round(20 * dpr);
+
+  const titleSize = Math.round(20 * dpr);
+  const lineH = Math.round(titleSize * 1.4);
+  const titleH = titleText ? (PAD_Y + lineH) : 0;
+
+  // Top row = video(left) + optional 3D (right)
+  const topW = left.width + (rightImg ? (GAP_X + rightImg.width) : 0);
+  const topH = Math.max(left.height, rightImg ? rightImg.height : 0);
+
+  // 2D stack total height
+  const twoDTotalH = twoDImgs.length
+      ? twoDImgs.reduce((acc, im) => acc + im.height, 0) + GAP_Y * (twoDImgs.length - 1)
+      : 0;
+
+  // Output canvas size
+  const outW = PAD_X + Math.max(topW, twoDImgs.reduce((acc, im) => Math.max(acc, im.width), topW)) + PAD_X;
+  const outH = PAD_Y + titleH + topH + (twoDTotalH ? (GAP_Y + twoDTotalH) : 0) + PAD_Y;
+
+  const out = document.createElement('canvas');
+  out.width = outW; out.height = outH;
+  const octx = out.getContext('2d');
+
+  // Background
+  octx.fillStyle = '#fff';
+  octx.fillRect(0, 0, outW, outH);
+
+  // Title
+  if (titleText) {
+    octx.fillStyle = '#111';
+    octx.textAlign = 'center';
+    octx.textBaseline = 'top';
+    octx.font = titleSize + 'px Helvetica, Arial, sans-serif';
+    octx.fillText(titleText, outW/2, PAD_Y);
+  }
+
+  // Draw top row (video + optional 3D)
+  const contentTop = PAD_Y + titleH;
+  const leftY  = contentTop + Math.floor((topH - left.height) / 2);
+  const leftX  = PAD_X;
+  octx.drawImage(left, leftX, leftY);
+
+  if (rightImg) {
+    const rightX = PAD_X + left.width + GAP_X;
+    const rightY = contentTop + Math.floor((topH - rightImg.height) / 2);
+    octx.drawImage(rightImg, rightX, rightY);
+  }
+
+  // Draw stacked 2D plots under the top row
+  let yCursor = contentTop + topH;
+  if (twoDImgs.length) {
+    yCursor += GAP_Y;
+    for (const im of twoDImgs) {
+      const x = PAD_X; // full-width plots already sized by client width
+      octx.drawImage(im, x, yCursor);
+      yCursor += im.height + GAP_Y;
+    }
+  }
+
+  // Save
+  const a = document.createElement('a');
+  a.href = out.toDataURL('image/png');
+  a.download = 'video_3d_and_2d.png';
+  document.body.appendChild(a); a.click(); a.remove();
+}
 
   // ---- Main draw loop (unchanged for video/overlays) ----
   function draw(){
@@ -3545,10 +3780,7 @@ function init3d(){
         # Sidebar (only if expressions exist)
         sidebar = (
             "<div class='side-col' id='sideCol' style='display:none'>"
-            "  <div class='side-inner'>"
-            "    <div class='region-title'>Facial Regions</div>"
-            "    <div id='regionCtrls' class='region-controls'></div>"
-            "  </div>"
+            "  <div class='side-inner' id='sideInner'></div>"
             "</div>"
         ) if has_expr_any else ""
 
