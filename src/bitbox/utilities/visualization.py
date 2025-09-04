@@ -2289,7 +2289,7 @@ def visualize_expressions_3d(
     smooth: int = 0,
     downsample: int = 1,
     play_fps: int = 5,
-    max_frames: int = 360,
+    max_frames: int = 1000,
     target_size: Tuple[int, int] = (400, 300),
     overlay: Optional[object] = None,   # dict/list with type 'landmark'/'rectangle' (same as before)
     cushion_ratio: float = 0.35,
@@ -2615,9 +2615,6 @@ def write_video_overlay_html(
         if len(df_ds) == 0:
             return False, {}
 
-        if len(df_ds) > max_frames:
-            df_ds = df_ds.iloc[:max_frames]
-
         orig_indices = df_ds.index.to_numpy(dtype=int)
         ge_vals = df_ds[ge_cols].to_numpy(dtype=float)  # (T, G)
         n_frames, ge_count = ge_vals.shape
@@ -2832,6 +2829,12 @@ def write_video_overlay_html(
   .btn-reg { padding:6px 10px; border-radius:6px; border:2px solid #999; background:#fafafa; cursor:pointer; font-size:12px; width:100%; text-align:center; }
   .btn-reg.active { border-color:#2ecc71; }
 
+  .frame-counter{
+  margin-top:6px;
+  font:13px/1.4 monospace;
+  color:#333;
+  text-align:center;}
+
   video#vid { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; left:-9999px; top:-9999px; }
   .stage { position:relative; width:100%; height:100%; background:transparent; }
   canvas#view, canvas#overlay { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
@@ -3018,7 +3021,24 @@ document.addEventListener('keydown', (e)=>{
 });
 
   function fmt(t){if(!isFinite(t))return'0:00';const m=Math.floor(t/60);const s=Math.floor(t%60).toString().padStart(2,'0');return m+':'+s;}
-  function tickUI(){if(vid.readyState>=1){seek.max=vid.duration||seek.max;seek.value=vid.currentTime||0;timeLbl.textContent=fmt(vid.currentTime)+' / '+fmt(vid.duration);updateBtns();}requestAnimationFrame(tickUI);}
+  function tickUI(){
+  if (vid.readyState >= 1) {
+    seek.max = vid.duration || seek.max;
+    seek.value = vid.currentTime || 0;
+    timeLbl.textContent = fmt(vid.currentTime)+' / '+fmt(vid.duration);
+    updateBtns();
+
+    // --- update frame counter ---
+    const durFrames = (isFinite(vid.duration) && vid.duration > 0 && FPS > 0)
+        ? Math.max(1, Math.floor(vid.duration * FPS)) : null;
+    const rawFrame = Math.floor((vid.currentTime || 0) * FPS + 0.0001);
+    const frameNum = durFrames ? Math.max(0, Math.min(rawFrame, durFrames - 1)) : rawFrame;
+
+    const fc = document.getElementById('frameCounter');
+    if (fc) fc.textContent = 'Frame: ' + frameNum;
+  }
+  requestAnimationFrame(tickUI);
+    }
 
   function resizeCanvases(){
     const dpr=window.devicePixelRatio||1;
@@ -3359,17 +3379,17 @@ else if (HAS_POSE) {
         const layout = {
         margin:{l:50,r:10,t:28,b:30},
         font: {family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
-        title: {text: grp.label, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:12}},
+        title: {text: grp.label, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:14}},
         xaxis:{
             title:'Frame',
-            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
-            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
             range:[0,(EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]
         },
         yaxis:{
             title:'Value',
-            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
-            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"}
+            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12}
         },
         showlegend:true,
         shapes:vline
