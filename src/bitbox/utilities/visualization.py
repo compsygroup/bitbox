@@ -2829,6 +2829,17 @@ def write_video_overlay_html(
   .btn-reg { padding:6px 10px; border-radius:6px; border:2px solid #999; background:#fafafa; cursor:pointer; font-size:12px; width:100%; text-align:center; }
   .btn-reg.active { border-color:#2ecc71; }
 
+  /* --- Global GE selector --- */
+  .ge-section { width:100%; margin-top:14px; }
+  .ge-title { text-align:center; font-size:12px; margin:6px 0 8px; color:#333; }
+  .ge-block { width:100%; display:flex; flex-direction:column; gap:8px; }
+  #geSelect { width:100%; box-sizing:border-box; padding:6px; }
+  .ge-actions { display:flex; gap:8px; }
+  .btn-ge-action {
+    padding:6px 10px; border-radius:6px; border:2px solid #999;
+    background:#fafafa; cursor:pointer; font-size:12px;
+  }
+
   .frame-counter{
   margin-top:6px;
   font:13px/1.4 monospace;
@@ -3293,6 +3304,8 @@ else if (HAS_POSE) {
 
   // selectedRegions: set of region keys (e.g., 'lb', 'rb', ...)
   const selectedRegions = new Set();
+  const selectedGlobals = new Set();  // holds integer indices (0..ge_count-1)
+  function geKey(i){ return 'ge-' + String(i); }
 
   function buildRegionGroups(cols){
     const groups = {}; // key -> {label, idxs}
@@ -3358,85 +3371,135 @@ else if (HAS_POSE) {
     return trs;
   }
 
-  function render2d(recreateLayout){
-    if(!(HAS_EXPR_ANY && EXPR)) return;
-    if(!plots2dHost) return;
+function render2d(recreateLayout){
+  if(!(HAS_EXPR_ANY && EXPR)) return;
+  if(!plots2dHost) return;
 
-    // Show the 2D host
-    plots2dHost.style.display = 'block';
+  // Show the 2D host
+  plots2dHost.style.display = 'block';
 
-    const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
-    const vline = [{type:'line',xref:'x',yref:'paper',x0:(EXPR.x_full && EXPR.x_full[t]!==undefined?EXPR.x_full[t]:t),x1:(EXPR.x_full && EXPR.x_full[t]!==undefined?EXPR.x_full[t]:t),y0:0,y1:1,line:{width:2,dash:'dot'}}];
+  const t = Math.max(0, Math.min(EXPR.n_frames-1, Math.round((vid.currentTime||0)*FPS/Math.max(1, EXPR.stride))));
+  const curX = (EXPR.x_full && EXPR.x_full[t] !== undefined) ? EXPR.x_full[t] : t;
+  const vline = [{type:'line',xref:'x',yref:'paper',x0:curX,x1:curX,y0:0,y1:1,line:{width:2,dash:'dot'}}];
 
-    // For each selected region: ensure plot exists and update
-    selectedRegions.forEach(function(rkey){
-      const grp = REGION_GROUPS[rkey];
-      if(!grp) return;
-      const div = ensurePlotDiv(rkey);
+  // ----- Local region plots (unchanged behavior) -----
+  selectedRegions.forEach(function(rkey){
+    const grp = REGION_GROUPS[rkey];
+    if(!grp) return;
+    const div = ensurePlotDiv(rkey);
 
-      if (recreateLayout || !div.__inited) {
-        const traces = tracesForIdxs(grp.idxs, true);
-        const layout = {
+    if (recreateLayout || !div.__inited) {
+      const traces = tracesForIdxs(grp.idxs, true);
+      const layout = {
         margin:{l:50,r:10,t:28,b:30},
-        font: {family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
-        title: {text: grp.label, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:14}},
+        font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+        title:{text: grp.label, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:14}},
         xaxis:{
-            title:'Frame',
-            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
-            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
-            range:[0,(EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]
+          title:'Frame',
+          titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          range:[0, (EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]
         },
         yaxis:{
-            title:'Value',
-            titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
-            tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12}
+          title:'Value',
+          titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12}
         },
         showlegend:true,
         shapes:vline
-        };
-        Plotly.newPlot(div, traces, layout, {displayModeBar:false,responsive:true});
-        div.__inited = true;
-      } else {
-        try { Plotly.relayout(div, {shapes:vline}); } catch(_){}
-      }
-    });
+      };
+      Plotly.newPlot(div, traces, layout, {displayModeBar:false,responsive:true});
+      div.__inited = true;
+    } else {
+      try { Plotly.relayout(div, {shapes:vline}); } catch(_){}
+    }
+  });
 
-    // Remove plots for any regions that are no longer selected
-    const existing = Array.from(document.querySelectorAll('.plot2d'));
-    existing.forEach(function(d){
-      const id = d.id || '';
-      if(!id.startsWith('plot2d-')) return;
-      const rkey = id.replace('plot2d-','');
-      if(!selectedRegions.has(rkey)){
-        removePlotDiv(rkey);
-      }
-    });
-  }
+  // ----- Global GE plots (one per selected index) -----
+  selectedGlobals.forEach(function(gi){
+    if (gi < 0 || gi >= EXPR.ge_count) return;
+    const key = geKey(gi);
+    const div = ensurePlotDiv(key);
+
+    if (recreateLayout || !div.__inited) {
+      const xs = EXPR.x_full || [];
+      const ys = (EXPR.line_z_by_ge && EXPR.line_z_by_ge[gi]) ? EXPR.line_z_by_ge[gi] : [];
+      const name = (EXPR.ge_cols && EXPR.ge_cols[gi]) ? EXPR.ge_cols[gi] : ('GE ' + gi);
+
+      const traces = [{
+        type:'scatter',
+        mode:'lines',
+        x: xs,
+        y: ys,
+        name: name,
+        line:{ width:1 }
+      }];
+
+      const layout = {
+        margin:{l:50,r:10,t:28,b:30},
+        font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111"},
+        title:{text: name, font:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111", size:14}},
+        xaxis:{
+          title:'Frame',
+          titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          range:[0, (EXPR.x_full && EXPR.x_full.length ? EXPR.x_full[EXPR.x_full.length-1] : 0)]
+        },
+        yaxis:{
+          title:'Value',
+          titlefont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12},
+          tickfont:{family:"Roboto, Helvetica, Arial, sans-serif", color:"#111",size:12}
+        },
+        showlegend:false,
+        shapes:vline
+      };
+      Plotly.newPlot(div, traces, layout, {displayModeBar:false,responsive:true});
+      div.__inited = true;
+    } else {
+      try { Plotly.relayout(div, {shapes:vline}); } catch(_){}
+    }
+  });
+
+  // Clean up plots that are no longer selected
+  const existing = Array.from(document.querySelectorAll('.plot2d'));
+  existing.forEach(function(d){
+    const id = d.id || '';
+    if(!id.startsWith('plot2d-')) return;
+    const key = id.replace('plot2d-','');
+    const isRegion = key && REGION_GROUPS && REGION_GROUPS[key];
+    const isGlobal = key.startsWith('ge-') && selectedGlobals.has(Number(key.slice(3)));
+
+    if (!isRegion && !isGlobal) {
+      removePlotDiv(key);
+    }
+  });
+}
+
 
 function initSidebarAnd2D(){
   if (!HAS_EXPR_ANY || !EXPR || !EXPR.ge_count) return;
 
   const cols = (EXPR.ge_cols || []).map(c => String(c).toLowerCase());
   const LOCAL_PREFIXES = ['lb','rb','no','le','re','ul','ll'];
-  const hasLocal = cols.some(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
 
-  // If not local → hide and clear any content
-  const sideInner = document.getElementById('sideInner');
-  if (!hasLocal) {
-    if (sideCol) sideCol.style.display = 'none';
-    if (plots2dHost) plots2dHost.style.display = 'none';
-    if (sideInner) sideInner.innerHTML = '';
-    return;
-  }
+  const hasLocal  = cols.some(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
+  const hasGlobal = cols.some(name => !LOCAL_PREFIXES.some(p => name.startsWith(p))); // NEW
 
   // Show containers
   if (sideCol) sideCol.style.display = 'block';
   if (plots2dHost) plots2dHost.style.display = 'block';
 
-  // Rebuild the sidebar content (title + controls) from scratch
-  if (sideInner) {
-    sideInner.innerHTML = '';
+  const sideInner = document.getElementById('sideInner');
+  if (!sideInner) return;
 
+  sideInner.innerHTML = '';
+  sideInner.style.display = 'flex';
+  sideInner.style.flexDirection = 'column';
+  sideInner.style.height = '100%';
+  sideInner.style.minHeight = '0';
+
+  // ---- Local facial regions (unchanged) ----
+  if (hasLocal) {
     const title = document.createElement('div');
     title.className = 'region-title';
     title.textContent = 'Facial Regions';
@@ -3448,44 +3511,186 @@ function initSidebarAnd2D(){
     sideInner.appendChild(ctrls);
   }
 
-  // Build groups using the full ge_cols but filtered to local prefixes
+  // ---- Global Expressions dropdown (SHOW ONLY IF hasGlobal) ----
+  if (hasGlobal) {
+    const geSection = document.createElement('div');
+    geSection.style.display = 'flex';
+    geSection.style.flexDirection = 'column';
+    geSection.style.flex = '1 1 auto';
+    geSection.style.minHeight = '0';
+
+    const geTitle = document.createElement('div');
+    geTitle.className = 'ge-title';
+    geTitle.textContent = 'Global Expressions (GE)';
+    geSection.appendChild(geTitle);
+
+    const dd = document.createElement('div');
+    dd.style.position = 'relative';
+    dd.style.display = 'flex';
+    dd.style.flexDirection = 'column';
+    dd.style.flex = '1 1 auto';
+    dd.style.minHeight = '0';
+
+    // Toggle button (full width)
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'btn-ge-action';
+    toggle.textContent = 'Select GE (0 selected)';
+    toggle.style.padding = '8px 10px';
+    toggle.style.border = '2px solid #999';
+    toggle.style.borderRadius = '6px';
+    toggle.style.background = '#fafafa';
+    toggle.style.cursor = 'pointer';
+    toggle.style.textAlign = 'center';
+    toggle.style.fontSize = '12px';
+    toggle.style.lineHeight = '1.2';
+    toggle.style.width = '100%'; // make it wide
+    toggle.setAttribute('aria-expanded', 'false');
+    dd.appendChild(toggle);
+
+    // Dropdown panel
+    const panel = document.createElement('div');
+    panel.style.position = 'absolute';
+    panel.style.left = '0';
+    panel.style.right = '0';
+    panel.style.marginTop = '6px';
+    panel.style.border = '1px solid #ddd';
+    panel.style.borderRadius = '8px';
+    panel.style.background = '#fff';
+    panel.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
+    panel.style.zIndex = '1001';
+    panel.style.display = 'none';
+
+    const listWrap = document.createElement('div');
+    listWrap.style.maxHeight = '50vh';
+    listWrap.style.padding = '8px';
+    listWrap.style.boxSizing = 'border-box';
+
+    // Build checkbox list **only for globals**
+    for (let i = 0; i < EXPR.ge_count; i++) {
+      const colName = (EXPR.ge_cols && EXPR.ge_cols[i]) ? String(EXPR.ge_cols[i]).toLowerCase() : '';
+      const isLocal = LOCAL_PREFIXES.some(p => colName.startsWith(p));
+      if (isLocal) continue;  // skip locals here
+
+      const labelText = (EXPR.ge_cols && EXPR.ge_cols[i]) ? EXPR.ge_cols[i] : ('GE ' + i);
+
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '8px';
+      row.style.fontSize = '12px';
+      row.style.padding = '6px 4px';
+      row.style.cursor = 'pointer';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = String(i);
+      cb.checked = selectedGlobals.has(i);
+      cb.style.cursor = 'pointer';
+
+      cb.addEventListener('change', () => {
+        const idx = Number(cb.value);
+        if (cb.checked) selectedGlobals.add(idx);
+        else selectedGlobals.delete(idx);
+        updateToggleText();
+        render2d(true);
+      });
+
+      const span = document.createElement('span');
+      span.textContent = `${labelText}`;
+
+      row.appendChild(cb);
+      row.appendChild(span);
+      listWrap.appendChild(row);
+    }
+
+    panel.appendChild(listWrap);
+    dd.appendChild(panel);
+    geSection.appendChild(dd);
+    sideInner.appendChild(geSection);
+
+    function updateToggleText() {
+      const n = selectedGlobals.size;
+      toggle.textContent = `Selected GE (${n})`;
+    }
+    updateToggleText();
+
+    function openPanel() {
+      // Sync checks with current selection
+      Array.from(listWrap.querySelectorAll('input[type="checkbox"]')).forEach((cb) => {
+        const idx = Number(cb.value);
+        cb.checked = selectedGlobals.has(idx);
+      });
+      panel.style.display = 'block';
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    function closePanel() {
+      panel.style.display = 'none';
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+    function isOpen() { return panel.style.display !== 'none'; }
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isOpen()) closePanel(); else openPanel();
+    });
+    document.addEventListener('click', (e) => {
+      if (!dd.contains(e.target)) closePanel();
+    });
+    window.addEventListener('resize', () => {
+      try {
+        const side = document.getElementById('sideCol');
+        if (!side) return;
+        const sideRect = side.getBoundingClientRect();
+        const ddRect = dd.getBoundingClientRect();
+        const spaceBelow = sideRect.bottom - ddRect.bottom - 10;
+        const maxH = Math.max(180, Math.min(spaceBelow, window.innerHeight * 0.6));
+        panel.style.maxHeight = `${maxH}px`;
+        listWrap.style.maxHeight = `${maxH - 20}px`;
+      } catch(_){}
+    });
+  } else {
+    // No global expressions → ensure no stale GE plots remain
+    if (selectedGlobals && selectedGlobals.size) {
+      selectedGlobals.clear();
+      render2d(true);
+    }
+  }
+
+  // ---- Local region buttons wiring (unchanged) ----
   const localCols = cols.filter(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
   REGION_GROUPS = buildRegionGroups(localCols);
 
-  // If nothing grouped → hide & clear
-  if (!REGION_GROUPS || Object.keys(REGION_GROUPS).length === 0) {
-    if (sideCol) sideCol.style.display = 'none';
-    if (plots2dHost) plots2dHost.style.display = 'none';
-    if (sideInner) sideInner.innerHTML = '';
-    return;
-  }
-
-  const regionCtrls = document.getElementById('regionCtrls');
-  if (regionCtrls){
-    regionCtrls.innerHTML = '';
-    Object.keys(REGION_GROUPS).forEach(function(rkey){
-      const b = document.createElement('button');
-      b.className = 'btn-reg';
-      b.textContent = REGION_GROUPS[rkey].label;
-      b.dataset.rkey = rkey;
-      b.addEventListener('click', function(){
-        const key = this.dataset.rkey;
-        if (selectedRegions.has(key)){
-          selectedRegions.delete(key);
-          this.classList.remove('active');
-        } else {
-          selectedRegions.add(key);
-          this.classList.add('active');
-        }
-        render2d(true);
+  if (hasLocal) {
+    const regionCtrls = document.getElementById('regionCtrls');
+    if (regionCtrls) {
+      regionCtrls.innerHTML = '';
+      Object.keys(REGION_GROUPS).forEach(function(rkey){
+        const b = document.createElement('button');
+        b.className = 'btn-reg';
+        b.textContent = REGION_GROUPS[rkey].label;
+        b.dataset.rkey = rkey;
+        b.addEventListener('click', function(){
+          const key = this.dataset.rkey;
+          if (selectedRegions.has(key)){
+            selectedRegions.delete(key);
+            this.classList.remove('active');
+          } else {
+            selectedRegions.add(key);
+            this.classList.add('active');
+          }
+          render2d(true);
+        });
+        regionCtrls.appendChild(b);
       });
-      regionCtrls.appendChild(b);
-    });
+    }
   }
 
-  // initial empty render (no plots until user selects)
+  // Initial render
   render2d(true);
 }
+
+
 
   // ---- Update 3D (unchanged; just keep 2D vertical line in sync if plots exist) ----
   function update3d(frame){
