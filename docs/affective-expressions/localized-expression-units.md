@@ -38,7 +38,7 @@ lands2D = processor.detect_landmarks()
 exp_global, pose, lands3D = processor.fit()
 ```
 
-Landmarks can be used to compute [biomechanical properties](broken-reference), [symmetry](symmetry.md), or [social dynamics](broken-reference) of facial expressions.&#x20;
+Landmarks can be used to compute [biomechanical properties](broken-reference), [symmetry](symmetry.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
 
 ### Expression Related Global Deformations
 
@@ -51,7 +51,7 @@ An alternative method for studying facial expressions involves using per-frame e
 exp_global, pose, lands3D = processor.fit()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md) or [social dynamics](broken-reference) of facial expressions.&#x20;
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](arousal-valence.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
 
 ### Localized Expression Units
 
@@ -64,4 +64,4 @@ Due to significant structural limitations of automated AU detectors (see [this a
 exp_local = processor.localized_expressions()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](arousal-valence.md), or [social dynamics](broken-reference) of facial expressions.
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](arousal-valence.md), and [social dynamics](broken-reference) of facial expressions.
