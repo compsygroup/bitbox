@@ -24,7 +24,7 @@ Bitbox analyzes the asymmetry of facial expressions and body actions (coming soo
 This function only accepts facial landmarks as input, allowing either 2D or 3D canonicalized landmarks. We highly recommend using 3D canonicalized landmarks, particularly if the face is not strictly frontal, as pose variations can greatly and differentially influence 2D landmark coordinates.
 
 {% hint style="danger" %}
-Only use 2D landmarks if there is a compelling reason and the face is **perfectly frontal in all frames**.
+Use 2D landmarks **only** **if** there is a compelling reason and the face is **perfectly frontal in all frames**.
 {% endhint %}
 
 <pre class="language-python"><code class="lang-python"># detect 2D landmarks
