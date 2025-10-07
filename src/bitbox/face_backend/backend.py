@@ -399,7 +399,7 @@ class FaceProcessor:
             raise ValueError("Failed running %s" % name)
         
     def plot(self, data: dict, random_seed: int = 42, num_frames: int = 5, overlay: Optional[list] = None, 
-             pose: Optional[dict] = None, video: bool = False,):
+             pose: Optional[dict] = None, video: bool = False, frames: Optional[List[int]] = None):
 
         # helpers to parse overlay variants (list or dict) into landmark/rectangle pieces
         def _parse_overlay(ov) -> tuple:
@@ -431,7 +431,6 @@ class FaceProcessor:
         overlay_land, overlay_rect = _parse_overlay(overlay)
 
         if check_data_type(data, 'rectangle'):
-            # Primary is rectangles; optional overlay can be landmarks (from overlay list/dict)
             return visualize_and_export(
                 rects=data,
                 num_frames=num_frames,
@@ -442,11 +441,11 @@ class FaceProcessor:
                 overlay=overlay_land,   # pass only landmark overlay here
                 pose=pose,
                 video=video,
+                frames=frames,
                 
             )
 
         if check_data_type(data, 'landmark'):
-            # Primary is landmarks; rectangles can come from overlay list/dict
             rects_src = overlay_rect if overlay_rect is not None else None
             return visualize_and_export(
                 rects=rects_src,
@@ -458,10 +457,10 @@ class FaceProcessor:
                 overlay=data,   # landmarks become the overlay
                 pose=pose,
                 video=video,
+                frames=frames,
             )
         
         if check_data_type(data, 'landmark-can'):
-            # Special case for canonical landmarks; this function already supports overlay list/dict
             return visualize_and_export_can_land(
                 num_frames=num_frames,
                 out_dir=out_dir,
@@ -469,29 +468,30 @@ class FaceProcessor:
                 land_can=data,
                 pose=pose,
                 overlay=overlay,
+                video=video,
+                frames=frames,
             )
 
         if check_data_type(data, 'expression'):
-            # Special case for expressions; forward overlay (list or dict) to enable cropping + overlays
             return visualize_expressions_3d(
                 expressions=data,
                 out_dir=out_dir,
                 video_path=video_path,
                 smooth=0,
-                normalize=None,
                 downsample=1,
                 play_fps=5,
                 overlay=overlay,
             )
 
         if check_data_type(data, 'pose'):
-            # Special case for pose; forward overlay (list or dict) to enable cropping + overlays
             return visualize_and_export_pose(
                 pose=data,
                 num_frames=num_frames,
                 video_path=video_path,
                 out_dir=out_dir,
                 overlay=overlay,
+                video=video,
+                frames=frames,
             )
 
         raise ValueError(f"Unknown data type: {getattr(data, 'get', lambda *_: None)('type')!r}. Expected 'rectangle', 'landmark', 'landmark-can', 'expression', or 'pose'.")

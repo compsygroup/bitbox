@@ -1,12 +1,12 @@
 from .signal_processing import  windowed_cross_correlation, windowed_cross_correlation_2S
-from .utilities import get_data_values
+from .utilities import get_data_values,check_data_type
 
 import numpy as np
 
 
 def intra_person_coordination(data, axis=0, width=0.5, lag=None, step=None, fps=30):
     # check data type
-    if not check_data_type(landmarks, ['expression', 'pose']):
+    if not check_data_type(data, ['expression', 'pose']):
         raise ValueError("Only 'expression' or 'pose' data can be used for coordination calculation. Make sure to use the correct data type.")
         
     # make sure data is in the right format
@@ -38,7 +38,7 @@ def intra_person_coordination(data, axis=0, width=0.5, lag=None, step=None, fps=
 
 def intra_person_coordination_2S(data, axis=0, width=0.5, lag=None, step=None, fps=30, ordinal=False):
     # check data type
-    if not check_data_type(landmarks, ['expression', 'pose']):
+    if not check_data_type(data, ['expression', 'pose']):
         raise ValueError("Only 'expression' or 'pose' data can be used for coordination calculation. Make sure to use the correct data type.")
         
     # make sure data is in the right format
