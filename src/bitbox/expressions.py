@@ -79,7 +79,7 @@ def asymmetry(landmarks, axis=0, normalize=True):
     # normalze scores based on expected landmark errors for perfectly symmetric faces
     # and extreme values generated from Jim Carrey videos
     if normalize:
-        if dimension == 3: # canonicalized landmarks
+        if dimension == 3: # 3D canonicalized landmarks
             if processor == '3DI':
                 min_sym = pd.Series({"eye":0.5801, "brow":0.7857, "nose":0.0965, "mouth":1.0076, "overall":0.6172}) # 50 perc (median) of sym
                 max_jim = pd.Series({"eye":3.1310, "brow":2.2180, "nose":1.4357, "mouth":5.5638, "overall":2.4260}) # 99 perc of jim
@@ -101,11 +101,27 @@ def asymmetry(landmarks, axis=0, normalize=True):
     return asymmetry_scores
 
 
-# use_negatives: whether to use negative peaks, 0: only positive peaks, 1: only negative peaks, 2: both
-def expressivity(activations, axis=0, use_negatives=0, num_scales=6, robust=True, fps=30):
+# use_negatives: whether to use negative peaks
+# 0: only positive peaks, 1: only negative peaks, 2: both
+def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=30):
+    """
+    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    """
+    
     # check data type
     if not check_data_type(activations, 'expression'):
         raise ValueError("Only 'expression' data can be used for expressivity calculation. Make sure to use the correct data type.")
+    
+    # determine time scales
+    if isinstance(scales, list):
+        num_scales = len(scales)
+    elif isinstance(scales, int):
+        if scales == 0:
+            num_scales = 1
+        else:
+            num_scales = scales
+    else:
+        raise ValueError("scales must be either an integer or a list")
         
     # make sure data is in the right format
     data = get_data_values(activations)
@@ -128,7 +144,7 @@ def expressivity(activations, axis=0, use_negatives=0, num_scales=6, robust=True
         signal = data[:,i]
         
         # detect peaks at multiple scales
-        peaks = peak_detection(signal, num_scales=num_scales, fps=fps, smooth=True, noise_removal=False)
+        peaks = peak_detection(signal, scales=scales, fps=fps, smooth=True, noise_removal=False)
         
         for s in range(num_scales):
             _peaks = peaks[s, :]
@@ -168,10 +184,22 @@ def expressivity(activations, axis=0, use_negatives=0, num_scales=6, robust=True
     return expresivity_stats
 
 
-def diversity(activations, axis=0, use_negatives=0, num_scales=6, robust=True, fps=30):
+def diversity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=30):
+    """
+    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    """
+    
     # check data type
     if not check_data_type(activations, 'expression'):
         raise ValueError("Only 'expression' data can be used for diversity calculation. Make sure to use the correct data type.")
+    
+    # determine time scales
+    if isinstance(scales, list):
+        num_scales = len(scales)
+    elif isinstance(scales, int):
+        num_scales = scales
+    else:
+        raise ValueError("scales must be either an integer or a list")
         
     # make sure data is in the right format
     data = get_data_values(activations)
@@ -197,7 +225,7 @@ def diversity(activations, axis=0, use_negatives=0, num_scales=6, robust=True, f
         signal = data[:, i]
         
         # detect peaks at multiple scales
-        peaks = peak_detection(signal, num_scales=num_scales, fps=fps, smooth=True, noise_removal=False)
+        peaks = peak_detection(signal, scales=scales, fps=fps, smooth=True, noise_removal=False)
         
         for s in range(num_scales):
             _peaks = peaks[s, :]
