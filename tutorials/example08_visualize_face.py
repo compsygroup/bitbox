@@ -1,13 +1,11 @@
 from bitbox.face_backend import FaceProcessor3DI as FP
-import numpy as np
-from bitbox.utilities.visualization import plot
 
-input_file = 'elaine.mp4'
-output_dir = 'output'
+input_file = 'data/elaine.mp4'
+output_dir = 'output/elaine'
 
 
 # define a face processor
-processor = FP(runtime='bitbox:latest')
+processor = FP(runtime='bitbox:cuda12')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
