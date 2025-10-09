@@ -146,9 +146,9 @@ def _visualize_peaks(signal, wavelets, peaks, fps):
         ax[s].set_xticks(np.arange(0, seconds.max()+dx, dx))
 
 
-def peak_detection(data, scales=6, aggregate=False, fps=30, smooth=True, noise_removal=True, visualize=False):
+def peak_detection(data, scales=None, aggregate=False, fps=30, smooth=True, noise_removal=True, visualize=False):
     """
-    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    scales:   either the number of time scales to be considered or a list of time scales in seconds, or None (using the original signal)
     """
     
     # check if the data is a list
@@ -159,27 +159,35 @@ def peak_detection(data, scales=6, aggregate=False, fps=30, smooth=True, noise_r
         
     # determine time scales
     # For PyWavelets 'mexh', pseudo-freq f≈0.25/(scale⋅dt). To target events of duration d seconds, use scale ≈ (fps * d) / 4
-    if isinstance(scales, list):
+    if scales is None:
+        num_scales = 1
+        durations = [None]
+    elif isinstance(scales, list):
         num_scales = len(scales)
         durations = np.array(scales)
+        # map duration->mexh scale
+        scales = (fps * durations) / 4.0
     elif isinstance(scales, int):
-        if scales == 0:
-            num_scales = 1
-            durations = np.zeros(1)
-        else:
-            num_scales = scales
-            durations = np.linspace(0.1, 4.0, num=num_scales)  # seconds
-            #scales = (fps/30) * np.geomspace(1, 18, num=num_scales)
+        if scales < 0:
+            raise ValueError("scales must be a positive integer or a list")
+        num_scales = scales
+        durations = np.linspace(0.1, 4.0, num=num_scales)  # seconds
+        # map duration->mexh scale
+        scales = (fps * durations) / 4.0
+        #scales = (fps/30) * np.geomspace(1, 18, num=num_scales)
     else:
         raise ValueError("scales must be either an integer or a list")
     
-    # map duration->mexh scale
-    scales = (fps * durations) / 4.0
-    
+    if num_scales == 1:
+        aggregate = False
+        
     # for each signal in the list
     peaksl = []
     for i in range(len(datal)):
         signal_org = datal[i]
+        
+        if (scales is not None) and (np.max(durations) >= len(signal_org)/fps):
+            raise ValueError(f"The maximum scale cannot be larger than the signal length. Signal length: {len(signal_org)/fps:.1f} s, max scale: {np.max(durations):.1f} s")
         
         # zero mean the signal
         signal = signal_org - signal_org.mean()
@@ -188,7 +196,7 @@ def peak_detection(data, scales=6, aggregate=False, fps=30, smooth=True, noise_r
         if smooth:
             signal = gaussian_filter(signal, sigma=1)
         
-        if (num_scales == 1) and (scales[0] == 0):
+        if scales is None:
             peaks = _peak_detector(signal, noise_removal=noise_removal).reshape([1,-1])
             if visualize:
                 _visualize_peaks(signal_org, signal.reshape([1,-1]), peaks, fps)
@@ -205,11 +213,12 @@ def peak_detection(data, scales=6, aggregate=False, fps=30, smooth=True, noise_r
                 _visualize_peaks(signal_org, wavelets, peaks, fps)
                 
             if aggregate:
-                peaks = _aggregate_peaks(peaks, wavelets, fps=fps, t_suppress=np.min(durations), scale_win=3)
+                peaks = _aggregate_peaks(peaks, wavelets, fps=fps, t_suppress=np.min(durations-0.01), scale_win=3).reshape([1,-1])
+                durations = [f"Agg {durations.min():.1f}-{durations.max():.1f}"]
             
         peaksl.append(peaks)
             
     if not isinstance(data, list):
         peaksl = peaksl[0]
         
-    return peaksl
+    return durations, peaksl

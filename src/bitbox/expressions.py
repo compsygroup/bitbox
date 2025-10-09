@@ -103,26 +103,15 @@ def asymmetry(landmarks, axis=0, normalize=True):
 
 # use_negatives: whether to use negative peaks
 # 0: only positive peaks, 1: only negative peaks, 2: both
-def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=30):
+def expressivity(activations, axis=0, use_negatives=0, scales=None, aggregate=False, robust=True, fps=30, verbose=False):
     """
-    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    scales:   either the number of time scales to be considered or a list of time scales in seconds, or None (using the original signal)
     """
     
     # check data type
     if not check_data_type(activations, 'expression'):
         raise ValueError("Only 'expression' data can be used for expressivity calculation. Make sure to use the correct data type.")
-    
-    # determine time scales
-    if isinstance(scales, list):
-        num_scales = len(scales)
-    elif isinstance(scales, int):
-        if scales == 0:
-            num_scales = 1
-        else:
-            num_scales = scales
-    else:
-        raise ValueError("scales must be either an integer or a list")
-        
+         
     # make sure data is in the right format
     data = get_data_values(activations)
     
@@ -132,20 +121,31 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
     
     num_signals = data.shape[1]
     
-    expresivity_stats = []
-    # define dataframes for each scale
-    for s in range(num_scales):
-         # number of peaks, density (average across entire signal), mean (across peak activations), std, min, max
-        _data = pd.DataFrame(columns=['number', 'density', 'mean', 'std', 'min', 'max'])
-        expresivity_stats.append(_data)
+    # determine time scales
+    if scales is None:
+        num_scales = 1
+    elif isinstance(scales, list):
+        num_scales = len(scales)
+    elif isinstance(scales, int):
+        if scales <= 0:
+            raise ValueError("scales must be a positive integer or a list")
+        num_scales = scales
+    else:
+        raise ValueError("scales must be either an integer or a list")
     
+    if aggregate and num_scales > 1:
+        num_scales = 1
+    
+    expresivity_stats = []    
     # for each signal
     for i in range(num_signals):
         signal = data[:,i]
         
         # detect peaks at multiple scales
-        peaks = peak_detection(signal, scales=scales, fps=fps, smooth=True, noise_removal=False)
+        durations, peaks = peak_detection(signal, scales=scales, aggregate=aggregate, fps=fps, smooth=True, noise_removal=False)
         
+        # number of peaks, density (average across entire signal), mean (across peak activations), std, min, max
+        _stats = pd.DataFrame(columns=['scale', 'frequency', 'density', 'mean', 'std', 'min', 'max'])
         for s in range(num_scales):
             _peaks = peaks[s, :]
             
@@ -168,8 +168,9 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
                 
             # calculate the statistics
             if len(peaked_signal) == 0:
-                print("No peaks detected for signal %d at scale %d" % (i, s))
-                results = np.zeros(6)
+                if verbose:
+                    print("No peaks detected for signal %d at scale %d" % (i, s))
+                results = [durations[s],0,0,0,0,0,0]
             else:
                 _number = len(peaked_signal)
                 _density = peaked_signal.sum() / len(signal)
@@ -177,9 +178,10 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
                 _std = peaked_signal.std()
                 _min = peaked_signal.min()
                 _max = peaked_signal.max()
-                results = [_number, _density, _mean, _std, _min, _max]
+                results = [durations[s], _number, _density, _mean, _std, _min, _max]
         
-            expresivity_stats[s].loc[i] = results
+            _stats.loc[s] = results
+        expresivity_stats.append(_stats)
         
     return expresivity_stats
 
