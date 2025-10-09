@@ -29,13 +29,11 @@ rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=
 # peaks = peak_detection(expression, scales=2, fps=30, aggregate=True, smooth=True, visualize=True)
 
 #%% Task 2: Overall expressivity
-# Quantify the overall expressivity (and its stats) of the face
-expressivity_stats = expressivity(exp_global, scales=6, aggregate=True, robust=True, fps=30)
-
-print(expressivity_stats[0])
+# expressivity_stats = expressivity(exp_global, scales=6, aggregate=True, robust=True, fps=30)
 
 #%% Task 3: Asymmetry of the facial expressions
 # asymmetry_scores = asymmetry(land_can)
 
 #%% Task 4: Diversity of the facial expressions
-# diversity_scores = diversity(exp_local)
+diversity_scores = diversity(exp_global, magnitude=False, scales=6, aggregate=False, robust=True, fps=30)
+print(diversity_scores)
