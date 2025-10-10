@@ -30,10 +30,24 @@ from bitbox.expressions import expressivity
 exp_global, pose, lands3D = processor.fit()
 
 # compute expressivity stats
-expressivity_stats = expressivity(exp_global)
+expressivity_stats = expressivity(exp_global, scales=6)
 ```
 
-The output is a list of Pandas `DataFrame` including five asymmetry scores per frame: _eyes_, _brows_, _nose_, _mouth_, and _overall_.
+The computation is performed at multiple temporal scales to capture expressions with different temporal characteristics (slowly evolving, fast, very rapid, etc.). At each scale, activations of the expression signal are detected using a peak detection algorithm. The number of such peaks and their magnitudes are used for computing metrics. The output is a list of Pandas `DataFrame`, one for each expression signal. Each `DataFrame` includes six metrics per temporal scale: _frequency_, _density_, _mean_, _std_, _min_, _max_.
+
+{% hint style="success" %}
+**Frequency**: Number of activations (peaks) observed in the expression signal.
+
+**Density**: Cummulative sum of activation magnitudes divided by the signal length.
+
+**Mean**: Mean magnitude of activations.
+
+**Std**: Standard deviation of activation magnitudes.
+
+**Min**: Minimum magnitude of activations.&#x20;
+
+**Max**: Maximum magnitude of activations.&#x20;
+{% endhint %}
 
 <pre><code>
 <strong>          eye	           brow	          nose	          mouth	         overall
@@ -45,31 +59,66 @@ The output is a list of Pandas `DataFrame` including five asymmetry scores per f
 ...	...	...	...	...	...
 </code></pre>
 
-### Output Ranges
+### Temporal Scales
 
-Bitbox performs a straightforward normalization on the asymmetry scores, by default. For 3D landmarks, the values typically fall between 0 (guaranteed) and 1 (not guaranteed). For 2D landmarks, the values are guaranteed to start from 0, but the upper limit is unspecified.
+Bitbox can compute expressivity at multiple time scales. A scale corresponds to a different window of interest in seconds. For example, if the scale is 1 second, that means we are detecting activations (peaks) that takes roughly 1 second from start to end. In the figure below, you see an original expression signal and its decomposition into signals at different temporal scales, along with peaks detected at each scale.&#x20;
 
-{% hint style="info" %}
-When interpreting normalized scores for 3D landmarks, use these as rough, human-visible thresholds:
+IMAGE: Multi-scale decomposition
 
-* Eyes: > 0.20 ≈ noticeable; > 0.40 ≈ clearly asymmetric
-* Brows: > 0.35 ≈ noticeable; > 0.40 ≈ clearly asymmetric
-* Nose: > 0.10 ≈ noticeable; > 0.40 ≈ clearly asymmetric
-* Mouth: > 0.10 ≈ noticeable; > 0.40 ≈ clearly asymmetric
+You can define the scales of interests using the `scales` parameter. You can either define the scales using an integer, the number of equally-spaced scales between 0.1 second and 4 second, or using an explicit list of durations.&#x20;
 
-These are recommendations, not rules. Adjust them to your data and use case.
+```python
+# defining the number of scales
+# resulting scales: 0.1 , 0.88, 1.66, 2.44, 3.22, 4.
+# computed using np.linspace(0.1, 4, 6)
+expressivity_stats = expressivity(exp_global, scales=6)
 
-With 2D landmarks, no universal thresholds exist as scale and camera effects vary. Calibrate on your dataset.
+# defining the scales explicitly
+expressivity_stats = expressivity(exp_global, scales=[0.5, 1, 1.5, 2])
+```
+
+For the scales to correspond to actual seconds, the frame rate of the signal must be set accurately. The default value is 30 frames per second.
+
+```python
+# setting the frame rate of the signal
+expressivity_stats = expressivity(exp_global, scales=6, fps=30)
+
+```
+
+If the `scales` parameter is skipped (default), the computation is performed at the lowest temporal scale (sampling rate of the original signal), and every single peak in the signal is considered. See the image below for an example.
+
+```python
+# working with the original signal with no temporal scales
+expressivity_stats = expressivity(exp_global, scales=None)
+
+# you can also simply skip the parameter, which generates the same results
+expressivity_stats = expressivity(exp_global)
+```
+
+IMAGE: No-scales
+
+You can also aggregate activations across multiple time scales and generate expressivity stats for the aggregate peaks. If there are very close (within the time window of the lowest scale) peaks at multiple scales, the underlying algorithm considers only the one with the highest relative magnitude (computed within its own scale).&#x20;
+
+<pre class="language-python"><code class="lang-python"><strong># disable normalization
+</strong>expressivity_stats = expressivity(exp_global, scales=[0.5, 1, 1.5, 2], aggregate=True)
+</code></pre>
+
+<pre><code>
+<strong>          eye	           brow	          nose	          mouth	         overall
+</strong>0	0.292884	0.265071	0.041300	0.075939	0.211353
+1	0.210291	0.260469	0.045354	0.097847	0.195869
+2	0.283825	0.156247	0.000000	0.000000	0.114181
+3	0.327324	0.119029	0.094368	0.040651	0.182186
+4	0.196593	0.167545	0.196875	0.051681	0.171618
+...	...	...	...	...	...
+</code></pre>
+
+{% hint style="warning" %}
+&#x20;Using the `aggregate` parameter is not same as simply adding stats from multiple scales. First, a new, combined set of peaks are generated by merging peaks of multiple scales and eliminating the redundant ones that are very close in time. Then, expressivity stats are generated for this single list of peaks.
 {% endhint %}
 
 {% hint style="warning" %}
-Score values may change based on the backend processor used to generate landmark coordinates. For example, 3D landmarks generated by 3DI-Lite, on average, tend to yield lower asymmetry score. Thresholds listed above are for 3D landmarks generated by 3DI.
+Using the `aggregate` parameter does not produce the same result with setting the `scales` parameter `None`. The latter will generate stats simply using the original signal itself.&#x20;
 {% endhint %}
 
-Disable normalization to compute scores in the same units as the landmarks.
-
-<pre class="language-python"><code class="lang-python"><strong># disable normalization
-</strong><strong>asymmetry_scores = asymmetry(lands3D, normalize=False)
-</strong></code></pre>
-
-&#x20;
+IMAGE: Aggregate
