@@ -27,7 +27,9 @@ This function only accepts facial landmarks as input, allowing either 2D or 3D c
 Use 2D landmarks **only** **if** there is a compelling reason and the face is **perfectly frontal in all frames**.
 {% endhint %}
 
-<pre class="language-python"><code class="lang-python"># detect 2D landmarks
+<pre class="language-python"><code class="lang-python">from bitbox.expressions import asymmetry
+
+# detect 2D landmarks
 lands2D = processor.detect_landmarks()
 
 # detect 3D landmarks

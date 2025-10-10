@@ -28,10 +28,10 @@ This function can quantify, for example, how much the mouth corners move relativ
 Similar to [kinematics](kinematics.md) and [smoothness](smoothness.md) measures, you can compute these stats for face bounding boxes, head pose, facial landmarks, or body joints (coming soon). When using landmarks, variables are calculated for each landmark separately.
 
 ```python
+from bitbox.biomechanics import relative_motion
+
 # run the processor
 rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all()
-
-from bitbox.biomechanics import relative_motion
 
 # motion stats for facial landmarks relative to the neutral frame
 mind, avgd, stdd, maxd = relative_motion(lands, reference=[0])

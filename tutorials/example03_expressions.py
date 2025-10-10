@@ -2,11 +2,11 @@ from bitbox.face_backend import FaceProcessor3DI
 from bitbox.signal_processing import peak_detection
 from bitbox.expressions import expressivity, asymmetry, diversity
 
-input_file = '/mnt/isilon/schultz_lab/cluster/isilon_usr/compsy/3DI_input/cass_interested1/ACES10290_participant.mp4'
-output_dir = '/mnt/isilon/schultz_lab/cluster/isilon_usr/compsy/3DI_output/cass_interested1_2025'
+input_file = 'data/birkan_symmetry.mp4'
+output_dir = 'output/birkan_symmetry'
 
 # define a face processor
-processor = FaceProcessor3DI(runtime='bitbox:cuda12', camera_model=40)
+processor = FaceProcessor3DI(runtime='bitbox:cuda12')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
@@ -29,11 +29,11 @@ rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=
 # peaks = peak_detection(expression, scales=2, fps=30, aggregate=True, smooth=True, visualize=True)
 
 #%% Task 2: Overall expressivity
-# Quantify the overall expressivity (and its stats) of the face
-# expressivity_stats = expressivity(exp_global, axis=0, use_negatives=0, scales=0, robust=True, fps=30)
+# expressivity_stats = expressivity(exp_global, scales=6, aggregate=True, robust=True, fps=30)
 
 #%% Task 3: Asymmetry of the facial expressions
-asymmetry_scores = asymmetry(land_can)
+# asymmetry_scores = asymmetry(land_can)
 
 #%% Task 4: Diversity of the facial expressions
-# diversity_scores = diversity(exp_local)
+diversity_scores = diversity(exp_global, magnitude=False, scales=6, aggregate=False, robust=True, fps=30)
+print(diversity_scores)

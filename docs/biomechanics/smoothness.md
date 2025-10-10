@@ -31,21 +31,20 @@ $$\mathrm{LDJ} = -\ln\left(\frac{T^{3}}{v_{\text{peak}}^{2}}\displaystyle\int_{0
 
 Similar to [kinematics](kinematics.md) measures, you can compute these variables for face bounding boxes, head pose, facial landmarks, or body joints (coming soon). When using landmarks, variables are calculated for each landmark separately.
 
-```python
+<pre class="language-python"><code class="lang-python">from bitbox.biomechanics import motion_smoothness
+
 # run the processor
 rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all()
 
-from bitbox.biomechanics import motion_smoothness
-
-# quantify abruptness of motion for face rectangles
-jerk, ldj = motion_smoothness(rects)
+<strong># quantify abruptness of motion for face rectangles
+</strong>jerk, ldj = motion_smoothness(rects)
 
 # quantify abruptness of motion for head pose
 jerk, ldj = motion_smoothness(pose)
 
 # quantify abruptness of motion for facial landmarks
 jerk, ldj = motion_smoothness(lands)
-```
+</code></pre>
 
 With head pose, you can either use translation coordinates or rotation angles (yaw, pitch, roll).
 

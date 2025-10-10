@@ -101,28 +101,15 @@ def asymmetry(landmarks, axis=0, normalize=True):
     return asymmetry_scores
 
 
-# use_negatives: whether to use negative peaks
-# 0: only positive peaks, 1: only negative peaks, 2: both
-def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=30):
+def expressivity(activations, axis=0, scales=None, aggregate=False, robust=True, fps=30, verbose=False):
     """
-    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    scales:   either the number of time scales to be considered or a list of time scales in seconds, or None (using the original signal)
     """
     
     # check data type
     if not check_data_type(activations, 'expression'):
         raise ValueError("Only 'expression' data can be used for expressivity calculation. Make sure to use the correct data type.")
-    
-    # determine time scales
-    if isinstance(scales, list):
-        num_scales = len(scales)
-    elif isinstance(scales, int):
-        if scales == 0:
-            num_scales = 1
-        else:
-            num_scales = scales
-    else:
-        raise ValueError("scales must be either an integer or a list")
-        
+         
     # make sure data is in the right format
     data = get_data_values(activations)
     
@@ -131,33 +118,23 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
         data = data.T
     
     num_signals = data.shape[1]
-    
-    expresivity_stats = []
-    # define dataframes for each scale
-    for s in range(num_scales):
-         # number of peaks, density (average across entire signal), mean (across peak activations), std, min, max
-        _data = pd.DataFrame(columns=['number', 'density', 'mean', 'std', 'min', 'max'])
-        expresivity_stats.append(_data)
-    
+       
+    expresivity_stats = []    
     # for each signal
     for i in range(num_signals):
         signal = data[:,i]
         
         # detect peaks at multiple scales
-        peaks = peak_detection(signal, scales=scales, fps=fps, smooth=True, noise_removal=False)
+        durations, peaks = peak_detection(signal, scales=scales, aggregate=aggregate, fps=fps, smooth=True, noise_removal=False)
+        num_scales = peaks.shape[0]
         
+        # number of peaks, density (average across entire signal), mean (across peak activations), std, min, max
+        _stats = pd.DataFrame(index=range(num_scales), columns=['scale', 'frequency', 'density', 'mean', 'std', 'min', 'max'])
         for s in range(num_scales):
             _peaks = peaks[s, :]
             
-            # whether we use negative peaks
-            if use_negatives == 0:
-                idx = np.where(_peaks==1)[0]
-            elif use_negatives == 1:
-                idx = np.where(_peaks==-1)[0]
-            elif use_negatives == 2:
-                idx = np.where(_peaks!=0)[0]
-            else:
-                raise ValueError("Invalid value for use_negatives")
+            # use only positive peaks for expressivity calculation
+            idx = np.where(_peaks==1)[0]
             
             # extract the peaked signal
             # if robust, we only consider inliers (removing outliers)
@@ -168,8 +145,9 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
                 
             # calculate the statistics
             if len(peaked_signal) == 0:
-                print("No peaks detected for signal %d at scale %d" % (i, s))
-                results = np.zeros(6)
+                if verbose:
+                    print("No peaks detected for signal %d at scale %d" % (i, s))
+                results = [durations[s],0,0,0,0,0,0]
             else:
                 _number = len(peaked_signal)
                 _density = peaked_signal.sum() / len(signal)
@@ -177,14 +155,15 @@ def expressivity(activations, axis=0, use_negatives=0, scales=6, robust=True, fp
                 _std = peaked_signal.std()
                 _min = peaked_signal.min()
                 _max = peaked_signal.max()
-                results = [_number, _density, _mean, _std, _min, _max]
+                results = [durations[s], _number, _density, _mean, _std, _min, _max]
         
-            expresivity_stats[s].loc[i] = results
+            _stats.loc[s] = results
+        expresivity_stats.append(_stats)
         
     return expresivity_stats
 
 
-def diversity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=30):
+def diversity(activations, axis=0, magnitude=True, scales=None, aggregate=False, robust=True, fps=30):
     """
     scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
     """
@@ -192,15 +171,7 @@ def diversity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=3
     # check data type
     if not check_data_type(activations, 'expression'):
         raise ValueError("Only 'expression' data can be used for diversity calculation. Make sure to use the correct data type.")
-    
-    # determine time scales
-    if isinstance(scales, list):
-        num_scales = len(scales)
-    elif isinstance(scales, int):
-        num_scales = scales
-    else:
-        raise ValueError("scales must be either an integer or a list")
-        
+           
     # make sure data is in the right format
     data = get_data_values(activations)
     
@@ -212,97 +183,59 @@ def diversity(activations, axis=0, use_negatives=0, scales=6, robust=True, fps=3
     
     #STEP 1: Detect peaks at multiple scales
     #---------------------------------------
-
-    # peak data will have shape (num_scales, num_frames, num_signals)
-    # we will compute diversity for pos and neg separately and take the average
-    data_peaked_pos = [0] * num_scales
-    data_peaked_neg = [0] * num_scales
-    for s in range(num_scales):
-        data_peaked_pos[s] = np.zeros((num_frames, num_signals))
-        data_peaked_neg[s] = np.zeros((num_frames, num_signals))
-
+    data_peaked = [] # will have shape (num_signals, num_frames, num_scales)
     for i in range(num_signals):
         signal = data[:, i]
         
         # detect peaks at multiple scales
-        peaks = peak_detection(signal, scales=scales, fps=fps, smooth=True, noise_removal=False)
+        durations, peaks = peak_detection(signal, scales=scales, aggregate=aggregate, fps=fps, smooth=True, noise_removal=False)
+        num_scales = peaks.shape[0]
         
+        data_peaked.append(np.zeros((num_frames, num_scales)))
         for s in range(num_scales):
             _peaks = peaks[s, :]
             
-            # whether we use negative peaks or not
-            if use_negatives == 0: # only use positives
-                _peaks[_peaks==-1] = 0
-            elif use_negatives == 1: # only use negatives
-                _peaks[_peaks==1] = 0
+            # use only positive peaks for expressivity calculation
+            idx = np.where(_peaks==1)[0]
             
+            # extract the peaked signal
             # if robust, we only consider inliers (removing outliers)
-            idx = np.where(_peaks!=0)[0]
             if robust and len(idx) > 5:
                 outliers = outlier_detectionIQR(signal[idx])
                 idx = np.delete(idx, outliers)
-            tmp = _peaks[idx]
-            _peaks[:] = 0
-            _peaks[idx] = tmp
+            signal_peaked = np.zeros_like(signal)
+            if magnitude:
+                signal_peaked[idx] = signal[idx]
+            else:
+                signal_peaked[idx] = _peaks[idx]
             
-            # store the peaked signal
-            signal_pos = np.zeros_like(signal)
-            signal_pos[_peaks==1] = signal[_peaks==1]
-            signal_neg = np.zeros_like(signal)
-            signal_neg[_peaks==-1] = signal[_peaks==-1]
-            
-            data_peaked_pos[s][:, i] = signal_pos
-            data_peaked_neg[s][:, i] = signal_neg
-            
+            data_peaked[-1][:, s] = signal_peaked
+    data_peaked = np.array(data_peaked) # shape (num_signals, num_frames, num_scales)
+    data_peaked = np.transpose(data_peaked, (2,1,0)) # shape (num_scales, num_frames, num_signals)
+    
     #STEP 2: Compute diversity at each scale
     #---------------------------------------
-    diversity = pd.DataFrame(index=range(num_scales), columns=['overall', 'frame_wise'])
-    for s in range(num_scales):
+    diversity = pd.DataFrame(index=range(num_scales), columns=['scale', 'overall', 'frame_wise'])
+    for s in range(num_scales):    
+        data_s = data_peaked[s, :, :] # shape (num_frames, num_signals)
+        #TODO: make sure each signal has the same range. Otherwise, we need to normalize the probabilities
+                
+        # type 1: compute for the entire time period
+        prob = np.abs(data_s).sum(axis=0)
+        prob = np.divide(prob, prob.sum(), out=np.zeros_like(prob), where=prob.sum() > 0)
+        base = num_signals#2
+        log_prob = log_transform(prob, base)
         
-        data_final = []
-        if use_negatives == 0: # only use positives
-            data_final = [data_peaked_pos[s]]
-        elif use_negatives == 1: # only use negatives
-            data_final = [data_peaked_neg[s]]
-        elif use_negatives == 2: # use both
-            data_final = [data_peaked_pos[s], data_peaked_neg[s]]
-        else:
-            raise ValueError("Invalid value for use_negatives")
+        # type 2: compute for each frame separately and take the average
+        prob_frame = np.divide(np.abs(data_s), np.abs(data_s).sum(axis=1, keepdims=True), 
+                       out=np.zeros_like(data_s), where=np.abs(data_s).sum(axis=1, keepdims=True) > 0)
         
-        # compute entropy for pos and neg separately and take the average
-        entropy = 0
-        entropy_frame = 0
-        for data_peaked in data_final:            
-            #TODO: make sure each signal has the same range. Otherwise, we need to normalize the probabilities
-            
-            base = num_signals#2
-            
-            # type 1: compute for the entire time period
-            prob = np.abs(data_peaked).sum(axis=0)
-            normalizer = prob.sum()
-            if normalizer > 0:
-                prob /= normalizer
-            
-            log_prob = log_transform(prob, base)
-            
-            # type 2: compute for each frame separately and take the average
-            prob_frame = np.zeros_like(data_peaked)
-            for f in range(num_frames):
-                normalizer = np.abs(data_peaked[f, :]).sum()
-                if normalizer > 0:
-                    prob_frame[f, :] = np.abs(data_peaked[f, :]) / normalizer
-            prob_frame[np.isinf(prob_frame)] = 0
-            prob_frame[np.isnan(prob_frame)] = 0
-            
-            log_prob_frame = log_transform(prob_frame, base)
-            
-            entropy += -1 * np.sum(prob * log_prob)
-            entropy_frame += -1 * np.sum(prob_frame * log_prob_frame, axis=1)
-            
-        entropy /= len(data_final)
-        entropy_frame /= len(data_final)
+        log_prob_frame = log_transform(prob_frame, base)
         
-        diversity.loc[s, :] = [entropy, entropy_frame.mean()]
+        entropy = -1 * np.sum(prob * log_prob)
+        entropy_frame = -1 * np.sum(prob_frame * log_prob_frame, axis=1)
+
+        diversity.loc[s] = [durations[s], entropy, entropy_frame.mean()]
     
     return diversity
             

@@ -34,10 +34,10 @@ Bitbox computes fundamental kinematic features of motion, including range of mot
 You can compute these variables for face bounding boxes, head pose, facial landmarks, or body joints (coming soon). When using landmarks, variables are calculated for each landmark separately.
 
 ```python
+from bitbox.biomechanics import motion_kinematics
+
 # run the processor
 rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all()
-
-from bitbox.biomechanics import motion_kinematics
 
 # compute motion kinematics for face rectangles
 mrange, path, speed, accelaration = motion_kinematics(rects)
