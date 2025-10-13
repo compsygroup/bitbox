@@ -63,7 +63,17 @@ The computation is performed at several temporal scales to capture expressions t
 
 Bitbox can compute expressivity across multiple temporal scales, where each scale represents a specific time window in seconds. This allows it to capture both short, transient expressions and longer, sustained changes. For example, if the scale is 2 seconds, Bitbox looks for expression activations that evolve over roughly two seconds—such as a gradual smile forming and fading—rather than brief micro-expressions. The figure below shows an expression signal decomposed into several temporal scales, along with detected peaks that correspond to expression events occurring at those different speeds.
 
-IMAGE: Multi-scale decomposition
+<figure><img src="../.gitbook/assets/multiscale (1).png" alt=""><figcaption></figcaption></figure>
+
+{% hint style="info" %}
+**What scales to consider?**
+
+The choice of temporal scales depends on both your dataset and your research question. You should first decide what types of expressions you want to capture—whether you are interested in quick, subtle changes (like micro-expressions) or slower, more deliberate facial movements (such as a gradual smile or frown).
+
+Shorter scales, such as 0.1–0.5 seconds, are better for detecting brief or fine-grained activations that reflect rapid muscle twitches or transient changes in expression. Longer scales, such as 1–3 seconds, capture sustained or slowly evolving expressions that may indicate intentional or emotional responses.
+
+When in doubt, it is often useful to analyze multiple scales to see how expressivity patterns vary across them. You can later select the most informative scales for your analysis or report results across several scales to capture the full temporal dynamics of facial behavior.
+{% endhint %}
 
 You can specify the desired scales through the `scales` parameter. This can be done either by providing:
 
@@ -102,8 +112,6 @@ expressivity_stats = expressivity(exp_global)
 0.     None        4          0.001738     0.66254  0.063133  0.58123  0.731558
 ```
 
-IMAGE: No-scales
-
 You can also combine activations detected at different time scales to produce overall expressivity statistics based on the aggregated peaks. When peaks from multiple scales occur very close in time—within the time window of the smallest scale—the algorithm keeps only the one with the highest relative magnitude, calculated within its own scale. This ensures that overlapping detections represent a single, dominant activation rather than multiple redundant ones.&#x20;
 
 <pre class="language-python"><code class="lang-python"><strong># disable normalization
@@ -122,8 +130,6 @@ Using the `aggregate` parameter is not the same as simply combining statistics f
 {% hint style="warning" %}
 Using the `aggregate` parameter does not produce the same result as setting the `scales` parameter to `None`. When `scales=None`, statistics are computed directly from the original signal without considering multiple temporal scales or merging peaks. In contrast, the aggregate option first merges peaks detected across scales, removes redundant ones, and then computes expressivity statistics from this combined set.
 {% endhint %}
-
-IMAGE: Aggregate
 
 {% hint style="warning" %}
 If you only need a rough estimate of the average level of expression activation, you can simply take the mean of the expression signals themselves without using the multiscale analysis provided by the expressivity function:
