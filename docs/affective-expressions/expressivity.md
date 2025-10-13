@@ -19,7 +19,7 @@ layout:
 
 <h2 align="center">Overall Expressivity</h2>
 
-Bitbox measures overall expressivity of expressions by counting number of activations of expression signals, their magnitudes, ranges, etc. These stats can be used to study how expressive a face is on average. These metrics are also useful as covariates as certain other measures, such as [asymmetry](symmetry.md), can be affected by overall expressivity (higher range of expressions may lead to higher magnitudes of asymmetry).&#x20;
+Bitbox measures overall expressivity of expressions by counting the number of expression-related activations, their magnitudes, ranges, etc. These stats can be used to study how expressive a face is on average. These metrics are also useful as covariates as certain other measures, such as [asymmetry](symmetry.md), can be affected by overall expressivity (higher range of expressions may lead to higher magnitudes of asymmetry).&#x20;
 
 This function only accepts [global](localized-expression-units.md#expression-related-global-deformations) or [local](localized-expression-units.md#localized-expression-units) facial expressions. It computes expressivity stats for each  expression coefficient independently.&#x20;
 
