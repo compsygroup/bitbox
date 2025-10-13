@@ -72,4 +72,4 @@ For example, once the local expression coefficients are computed, overall expres
 expressivity_stats = expressivity(exp_local, use_negatives=0, num_scales=6, robust=True, fps=30)
 ```
 
-More details on analysis functions are provided in [Biomechanics](broken-reference), [Affective Expressions](broken-reference), and [Social Dynamics](broken-reference) sections.
+More details on analysis functions are provided in [Biomechanics](broken-reference), [Affective Expressions](../affective-expressions/facial-expressions.md), and [Social Dynamics](broken-reference) sections.
