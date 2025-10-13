@@ -23,7 +23,7 @@ Facial expressions are a key aspect of facial behavior, closely linked to social
 
 ### Facial Landmark Points
 
-Facial landmarks are a set of points on the face that correspond to features, such as brows, eyes, noise, mouth. By tracking these points throughout a video, we can quantify the facial expressions and behavior at each frame, as the facial features correspond to parts of the face that move with facial expressions. An advantage of these landmarks over other forms of expression quantifiers (see below for [expression related deformations](localized-expression-units.md#expression-related-global-deformations) and [localized expression units](localized-expression-units.md#localized-expression-units)) is that they provide movement in a metric space, in terms of millimeters, and therefore can be useful in applications where geometric distances matter. Moreover, users can conduct analyses that require tracking specific landmark points on the face (_e.g._, lip corners).
+Facial landmarks are a set of points on the face that correspond to features, such as brows, eyes, noise, mouth. By tracking these points throughout a video, we can quantify the facial expressions and behavior at each frame, as the facial features correspond to parts of the face that move with facial expressions. An advantage of these landmarks over other forms of expression quantifiers (see below for [expression related deformations](facial-expressions.md#expression-related-global-deformations) and [localized expression units](facial-expressions.md#localized-expression-units)) is that they provide movement in a metric space, in terms of millimeters, and therefore can be useful in applications where geometric distances matter. Moreover, users can conduct analyses that require tracking specific landmark points on the face (_e.g._, lip corners).
 
 Most facial analysis processors (_e.g._, OpenFace) only provides landmarks in 2D space, which is known to be affected by head pose and facial morphology. Processors 3DI and 3DI-lite, however, provide facial landmarks both in 2D and in 3D. The latter include a variant called canonicalized 3D landmarks, which are particularly useful for the analysis of expressions, as they remove the effect of head movements, which often occur in naturalistic videos. Also, canonicalized 3D landmarks eliminate the effect of person-specific facial morphology, which is also advantageous for expression analysis, as certain personal characteristics (_e.g._, lower-than-usual eyebrows, wider-than-usual mouth) can be mistaken by algorithms are expression-related facial deformations. Both 3DI and 3DI-lite use the iBUG-51 landmark template, which tracks the brows, eyes, nose and mouth with 51 landmarks. See [output formats](../overview/outputs.md#id-2d-face-landmarks) for more details.
 
@@ -51,7 +51,7 @@ An alternative method for studying facial expressions involves using per-frame e
 exp_global, pose, lands3D = processor.fit()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](arousal-valence.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](broken-reference), and [social dynamics](broken-reference) of facial expressions.&#x20;
 
 ### Localized Expression Units
 
@@ -64,4 +64,4 @@ Due to significant structural limitations of automated AU detectors (see [this a
 exp_local = processor.localized_expressions()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](arousal-valence.md), and [social dynamics](broken-reference) of facial expressions.
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](broken-reference), and [social dynamics](broken-reference) of facial expressions.

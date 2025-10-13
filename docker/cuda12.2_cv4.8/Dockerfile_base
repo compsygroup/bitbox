@@ -33,7 +33,7 @@ RUN pip3 install --no-cache-dir \
     certifi==2024.7.4 \
     charset-normalizer==3.3.2 \
     clarabel==0.7.1 \
-    cvxpy==1.4.2 \
+    cvxpy==1.5.2 \
     ecos==2.0.13 \
     fonttools==4.50.0 \
     fsspec==2025.2.0 \
