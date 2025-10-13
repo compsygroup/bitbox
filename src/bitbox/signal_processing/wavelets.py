@@ -140,7 +140,7 @@ def _visualize_peaks(signal, wavelets, peaks, fps):
         ax[s].hlines(x[s].mean(), xmin=seconds.min(), xmax=seconds.max(), ls='--')
         
         ax[s].vlines(seconds[np.where(_peaks==1)[0]], ymin=x[s].min(), ymax=x[s].max(), colors='blue', linewidth=1)
-        ax[s].vlines(seconds[np.where(_peaks==-1)[0]], ymin=x[s].min(), ymax=x[s].max(), colors='red', linewidth=1)
+        # ax[s].vlines(seconds[np.where(_peaks==-1)[0]], ymin=x[s].min(), ymax=x[s].max(), colors='red', linewidth=1)
         
         dx = round(seconds.max() / 40, 2)
         ax[s].set_xticks(np.arange(0, seconds.max()+dx, dx))
