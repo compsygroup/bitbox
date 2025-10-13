@@ -5,7 +5,7 @@ with open('README.md', 'r') as f:
 
 setup(
     name = 'bitbox',
-    version = '2025.07dev',
+    version = '2025.10dev',
     description = 'Behavioral Imaging Toolbox',
     author = 'ComPsy Group',
     author_email = 'tuncb@chop.edu',

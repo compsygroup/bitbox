@@ -1,12 +1,11 @@
-from bitbox.face_backend import FaceProcessor3DI
-from bitbox.signal_processing import peak_detection
+from bitbox.face_backend import FaceProcessor3DI as FP
 from bitbox.expressions import expressivity, asymmetry, diversity
 
-input_file = 'data/birkan_symmetry.mp4'
-output_dir = 'output/birkan_symmetry'
+input_file = 'data/elaine.mp4'
+output_dir = 'output'
 
 # define a face processor
-processor = FaceProcessor3DI(runtime='bitbox:cuda12')
+processor = FP(runtime='bitbox:latest')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
@@ -16,25 +15,11 @@ rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=
 
 # we will use the localized expressions for the rest of the tutorial
 
-#%% Task 1: Peak Detection
-# # Detect peaks and visualize them in one of the expression bases
+# Overall expressivity
+expressivity_stats = expressivity(exp_global, scales=6, aggregate=False, robust=True, fps=30)
 
-# # get local expressions as a numpy array
-# data = exp_global['data'].values
+# Asymmetry of the facial expressions
+asymmetry_scores = asymmetry(land_can)
 
-# # # select the expression bases we are intrested in
-# expression = data[:, 7]
-
-# # # detect peaks
-# durations, peaks = peak_detection(expression, scales=None, fps=30, aggregate=False, smooth=False, noise_removal=False, visualize=True)
-
-#%% Task 2: Overall expressivity
-# expressivity_stats = expressivity(exp_global, scales=6, aggregate=True, robust=True, fps=30)
-# print(expressivity_stats[0])
-
-#%% Task 3: Asymmetry of the facial expressions
-# asymmetry_scores = asymmetry(land_can)
-
-#%% Task 4: Diversity of the facial expressions
+# Diversity of the facial expressions
 diversity_scores = diversity(exp_global, magnitude=True, scales=6, aggregate=False, robust=True, fps=30)
-print(diversity_scores)

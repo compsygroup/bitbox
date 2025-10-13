@@ -5,7 +5,7 @@ input_file = 'data/elaine.mp4'
 output_dir = 'output'
 
 # define a face processor
-processor = FP()
+processor = FP(runtime='bitbox:latest')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)

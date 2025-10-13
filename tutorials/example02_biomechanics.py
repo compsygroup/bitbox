@@ -1,11 +1,11 @@
-from bitbox.face_backend import FaceProcessor3DI
+from bitbox.face_backend import FaceProcessor3DI as FP
 from bitbox.biomechanics import motion_kinematics, relative_motion, motion_smoothness
 
 input_file = 'data/elaine.mp4'
 output_dir = 'output'
 
 # define a face processor
-processor = FaceProcessor3DI('bitbox:cuda12')
+processor = FP(runtime='bitbox:latest')
 
 # set input and output
 processor.io(input_file=input_file, output_dir=output_dir)
@@ -15,11 +15,9 @@ rects, lands, exp_global, pose, lands_can, exp_local = processor.run_all(normali
 
 # compute motion kinematics
 mrange, path, speed, accelaration = motion_kinematics(pose)
-print(mrange, path, speed, accelaration)
 
 # compute motion smoothness
 jerk, ldj = motion_smoothness(pose)
-print(jerk, ldj)
 
-# compute relative motion stats
-# mind, avgd, stdd, maxd = relative_motion(rects, reference=[7])
+# compute relative motion stats w.r.t. a reference frame
+mind, avgd, stdd, maxd = relative_motion(rects, reference=[7])

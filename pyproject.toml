@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bitbox"
-version = "2025.07dev"
+version = "2025.10dev"
 authors = [
   { name="ComPsy Group", email="tuncb@chop.edu" },
 ]
