@@ -35,12 +35,14 @@ diversity_scores = diversity(exp_global, scales=6)
 
 The computation is performed at several temporal scales, similar to multiscale computations with [Expressivity](expressivity.md#temporal-scales). Multiscale computation allows capturing expressions that unfold at different speeds—for example, slow, moderate, or rapid changes in facial activity. A temporal scale represents the approximate duration of an expression event. For instance, if the scale is 1 second, the algorithm looks for activations (peaks) in the expression signal that last about one second from start to finish. At each scale, a peak detection algorithm identifies these activations, and the entrpopy is computed using peak frequencies. Please see [Expressivity](expressivity.md#temporal-scales) section for the details on temporal scales.&#x20;
 
-The output is a Pandas `DataFrame`, containing two scores per temporal scale: overall entropy and average frame-wise entropy.
+The output is a Pandas `DataFrame`, containing two scores per temporal scale: overall entropy and average frame-wise entropy. The range for both scores is 0-1.
 
 {% hint style="success" %}
-**Overall**: Number of activations (peaks) observed in the expression signal.
+**Overall**: Entropy is calculated using cumulative frequencies of peaks across the entire signal.
 
-**Frame-wise**: Cummulative sum of activation magnitudes divided by the signal length.
+**Frame-wise**: Entropy is calculated at each frame individually and then average across time is computed.
+
+Note that Overall entropy will be always much higher than thr entropy at each frame, as well as, their average. At each frame only a few expression coefficients are expected to be activated, which yields very low entropy values.&#x20;
 {% endhint %}
 
 ```
