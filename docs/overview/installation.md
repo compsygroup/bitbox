@@ -57,7 +57,7 @@ Once you installed the backends, you can install the stable version of the Bitbo
 {% tabs %}
 {% tab title="pip" %}
 ```bash
-pip install bitbox
+pip3 install bitbox
 ```
 {% endtab %}
 
@@ -65,7 +65,7 @@ pip install bitbox
 We recommend using a virtual environment. **You will need to use python 3.8 or higher**.&#x20;
 
 ```bash
-python3.8 -m venv env
+python3 -m venv env
 source env/bin/activate
 ```
 

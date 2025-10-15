@@ -2141,12 +2141,12 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
             baseLayout.images = [];
             //  Drop 2D cartesian axes (xaxis*, yaxis*) not needed in pose-only export
             try {
-              const axisKeys = Object.keys(baseLayout).filter(k => /^xaxis\d*$|^yaxis\d*$/i.test(k));
+              const axisKeys = Object.keys(baseLayout).filter(k => /^xaxis\\d*$|^yaxis\\d*$/i.test(k));
               for (const k of axisKeys) delete baseLayout[k];
             } catch (e) { /* no-op */ }
 
             // Normalize scene Y domains to occupy full height
-            const sceneKeys = Object.keys(baseLayout).filter(k => (k === 'scene' || /^scene\d+$/.test(k)));
+            const sceneKeys = Object.keys(baseLayout).filter(k => (k === 'scene' || /^scene\\d+$/.test(k)));
             // Sort scenes left-to-right by domain.x
             sceneKeys.sort((a, b) => {
               const da = (baseLayout[a] && baseLayout[a].domain && baseLayout[a].domain.x) ? baseLayout[a].domain.x[0] : 0;
@@ -2179,7 +2179,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
               if (Array.isArray(eulers) && i < eulers.length && eulers[i] && typeof eulers[i].frame_idx === 'number') {
                 topText = 'Frame ' + eulers[i].frame_idx;
               } else if (Array.isArray(titles) && i < titles.length && typeof titles[i] === 'string') {
-                const mF = /Frame\s*(\d+)/i.exec(titles[i]);
+                const mF = /Frame\\s*(\\d+)/i.exec(titles[i]);
                 if (mF) topText = 'Frame ' + mF[1];
               }
               anns.push({
@@ -2210,9 +2210,9 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
                 label = `Yaw: ${yaw}, Pitch: ${pitch}, Roll: ${roll}`;
               } else if (Array.isArray(titles) && i < titles.length && typeof titles[i] === 'string') {
                 // Fallback: best-effort parse from title string
-                const mYaw = /Yaw:\s*([-+]?\d*\.?\d+)/i.exec(titles[i]);
-                const mPitch = /Pitch:\s*([-+]?\d*\.?\d+)/i.exec(titles[i]);
-                const mRoll = /Roll:\s*([-+]?\d*\.?\d+)/i.exec(titles[i]);
+                const mYaw = /Yaw:\\s*([-+]?\\d*\\.?\\d+)/i.exec(titles[i]);
+                const mPitch = /Pitch:\\s*([-+]?\\d*\\.?\\d+)/i.exec(titles[i]);
+                const mRoll = /Roll:\\s*([-+]?\\d*\\.?\\d+)/i.exec(titles[i]);
                 const yaw = mYaw ? mYaw[1] : '';
                 const pitch = mPitch ? mPitch[1] : '';
                 const roll = mRoll ? mRoll[1] : '';
@@ -3554,10 +3554,10 @@ function initSidebarAnd2D(){
     panel.style.left = '0';
     panel.style.right = '0';
     panel.style.marginTop = '6px';
-    panel.style.border = '1px solid #ddd';
+    panel.style.border = 'none';
     panel.style.borderRadius = '8px';
     panel.style.background = '#fff';
-    panel.style.boxShadow = '0 6px 18px rgba(0,0,0,0.08)';
+    panel.style.boxShadow = 'none';
     panel.style.zIndex = '1001';
     panel.style.display = 'none';
 
