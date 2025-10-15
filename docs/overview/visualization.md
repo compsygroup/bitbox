@@ -50,18 +50,18 @@ The output is an HTML/JS file located in the output directory. You can open the 
 processor.plot(lands, pose=pose)
 ```
 
-IMAGE
+<figure><img src="../.gitbook/assets/visual01.png" alt=""><figcaption></figcaption></figure>
 
 ```python
 # visualize landmarks with rectangles overlayed
 processor.plot(lands, overlay=[rects], video=True) 
 ```
 
-IMAGE
+<figure><img src="../.gitbook/assets/visual02.png" alt=""><figcaption></figcaption></figure>
 
 ```python
 # visualize expressions
 processor.plot(exp_global, overlay=[rects, lands], video=True)
 ```
 
-IMAGE
+<figure><img src="../.gitbook/assets/visual03.png" alt=""><figcaption></figcaption></figure>
