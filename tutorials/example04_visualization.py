@@ -13,13 +13,14 @@ processor.io(input_file=input_file, output_dir=output_dir)
 # run the processor
 rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=True)
 
-# we will use the global expressions for the rest of the tutorial
+# NOTE: The resulting HTML file will only include the final plot
+# comment out the ones you don't want to test
 
-# Overall expressivity
-expressivity_stats = expressivity(exp_global, scales=6, aggregate=False, robust=True, fps=30)
+# visualize landmarks at random poses
+processor.plot(land, pose=pose)
 
-# Asymmetry of the facial expressions
-asymmetry_scores = asymmetry(land_can)
+# visualize landmarks with rectangles overlayed
+processor.plot(land, overlay=[rect], video=True) 
 
-# Diversity of the facial expressions
-diversity_scores = diversity(exp_global, magnitude=True, scales=6, aggregate=False, robust=True, fps=30)
+# visualize expressions
+processor.plot(exp_global, overlay=[rect, land], video=True) 
