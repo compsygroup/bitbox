@@ -27,7 +27,7 @@ In this example, we will walk through the process of analyzing facial expression
 from bitbox.face_backend import FaceProcessor3DI as FP
 ```
 
-Define the input video file and output directory. We will use the example video provided in the `tutorial` directory in the GitHub repository.
+Define the input video file and output directory. We will use the example video provided in the `tutorial` directory in the GitHub repository. You can download it [here](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/tutorials/data/elaine.mp4).
 
 ```python
 # define input file and output directory
