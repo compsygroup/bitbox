@@ -51,7 +51,7 @@ An alternative method for studying facial expressions involves using per-frame e
 exp_global, pose, lands3D = processor.fit()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](broken-reference), and [social dynamics](broken-reference) of facial expressions.&#x20;
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
 
 ### Localized Expression Units
 
