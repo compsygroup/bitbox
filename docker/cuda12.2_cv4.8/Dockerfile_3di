@@ -1,0 +1,103 @@
+# Base image with CUDA 12.0 support
+FROM compsygroup/bitbox:base-cuda12.2.2-cudnn8-opencv4.8.1-ubuntu20.04
+
+# Set environment variables for non-interactive installs
+ENV DEBIAN_FRONTEND=noninteractive
+
+###############################
+# 3DI
+###############################
+
+# Copy and compile the 3DI app
+WORKDIR /app
+RUN rm -rf /opencv
+RUN git clone https://github.com/compsygroup/3DI.git .
+RUN cd /app/build && chmod +x builder.sh && ./builder.sh
+RUN cd /app/build/scripts && chmod +x compute_local_exp_coefficients.py learn_localised_bases.py produce_canonicalized_3Dlandmarks.py
+RUN cd /app/build/scripts && chmod +x save_identity_and_shape.py total_variance_rec_pose.py total_variance_rec.py
+RUN cd /app/build && chmod +x process_video.py multiframe_from_images.py
+
+###############################
+# 3DI-LITE
+###############################
+
+# install nvdiffrast
+WORKDIR /app/3DI_lite_tmp
+RUN git clone https://github.com/NVlabs/nvdiffrast
+WORKDIR  /app/3DI_lite_tmp/nvdiffrast
+RUN python3 setup.py install
+
+# install 3DI-lite
+WORKDIR /app/3DI_lite_tmp
+RUN git clone https://github.com/sariyanidi/FacialBasis
+
+# move everthing to its proper place
+WORKDIR /app
+RUN mv /app/3DI_lite_tmp/FacialBasis /app/3DI_lite
+RUN mv /app/build /app/3DI
+RUN rm -rf /app/3DI_lite_tmp
+RUN rm -rf /app/src
+
+WORKDIR /app/3DI_lite
+RUN chmod +x process_video.py
+RUN chmod +x compute_local_exp_coefficients.py
+
+###############################
+# Model files
+###############################
+
+WORKDIR /app/3DI/models
+RUN tar -xvzf lmodels.tar.gz
+WORKDIR /app/3DI/models/raw
+RUN wget --no-check-certificate https://raw.githubusercontent.com/Juyong/3DFace/master/Exp_Pca.bin
+RUN cp /app/3DI/models/raw/Exp_Pca.bin /app/3DI_lite/data/raw/.
+
+# install insightface
+WORKDIR /tmp
+RUN git clone https://github.com/deepinsight/insightface.git
+RUN cp -r /tmp/insightface/recognition/arcface_torch /app/3DI_lite/models/.
+
+# copy trained models
+RUN mkdir /app/3DI_lite/checkpoints
+RUN mkdir /app/3DI_lite/models/checkpoints
+
+WORKDIR /app/3DI_lite
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/backbone.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/medium_model15.00combined_celeb_ytfacesresnet50139979True1e-05-2-BFMmm-23660UNL_STORED.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/sep_modelv3SP15.00combined_celeb_ytfacesresnet501e-052True139979_V2.pth -P ./checkpoints/
+RUN wget --no-check-certificate https://sariyanidi.com/dbox/3DIlite/resnet50-0676ba61.pth -P ./models/checkpoints/
+
+# suppress lowest subnormal warnings
+RUN sed -i -e '8i import warnings' -e '8i warnings.filterwarnings("ignore", ".*smallest subnormal.*", category=UserWarning, module="numpy.core.getlimits")' process_video.py
+
+###############################
+# Make 3DI-lite standalone (not dependent on 3DI)
+###############################
+
+WORKDIR /app/3DI_lite
+RUN cp /app/3DI/video_detect_* .
+RUN cp /app/3DI/video_undistort .
+RUN cp -r /app/3DI/configs .
+RUN cp /app/3DI/models/deploy.prototxt models/
+RUN cp /app/3DI/models/res10_300x300_ssd_iter_140000_fp16.caffemodel models/
+RUN cp /app/3DI/models/haarcascade_frontalface_default.xml models/
+RUN cp /app/3DI/models/mmod_human_face_detector.dat models/
+RUN cp /app/3DI/models/opencv_face_detector* models/
+RUN cp /app/3DI/models/tf2onnx_onnx_model.onnx models/
+RUN cp -r /app/3DI/models/landmark_models models/
+RUN cp -r /app/3DI/models/dat_files models/
+RUN cp -r /app/3DI/models/MMs/ models/
+RUN cp -r /app/3DI/scripts/produce_canonicalized_3Dlandmarks.py .
+
+###############################
+# Final setup
+###############################
+
+# Add entrypoint script to handle first-time setup
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set the default command to the entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
+
+WORKDIR /app

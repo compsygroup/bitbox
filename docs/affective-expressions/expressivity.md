@@ -27,7 +27,7 @@ This function only accepts [global](facial-expressions.md#expression-related-glo
 from bitbox.expressions import expressivity
 
 # estimate global expression coefficients
-exp_global, pose, lands3D = processor.fit()
+exp_global, pose, lands3D = processor.fit(normalize=True)
 
 # compute expressivity stats
 expressivity_stats = expressivity(exp_global, scales=6)

@@ -13,7 +13,7 @@ processor.io(input_file=input_file, output_dir=output_dir)
 # run the processor
 rect, land, exp_global, pose, land_can, exp_local = processor.run_all(normalize=True)
 
-# we will use the localized expressions for the rest of the tutorial
+# we will use the global expressions for the rest of the tutorial
 
 # Overall expressivity
 expressivity_stats = expressivity(exp_global, scales=6, aggregate=False, robust=True, fps=30)

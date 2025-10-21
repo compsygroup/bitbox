@@ -4,41 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bitbox"
-version = "2025.10dev"
-authors = [
-  { name="ComPsy Group", email="tuncb@chop.edu" },
-]
-maintainers = [
-  {name = "ComPsy Group", email = "tuncb@chop.edu"}
-]
-description = "Behavioral Imaging Toolbox"
-license = { text = "Creative Commons Attribution-NonCommercial 4.0 International" }
-keywords = ["computer vision", "psychology", "psychiatry", "behavior", "facial expressions", "body actions"]
-readme = "README.md"
+version = "2025.10.dev1"   # PEP 440-friendly versioning
 requires-python = ">=3.8"
-dependencies = [
-    'scipy',
-    'cvxpy',
-    'numpy',
-    'scikit-learn',
-    'python-dateutil',
-    'PyWavelets',
-    'matplotlib',
-    'pandas',
-    'requests',
-    'paramiko',
-    'plotly',
-    'opencv-python',
-    'pillow',
-    'kaleido'
-]
+description = "Behavioral Imaging Toolbox"
+readme = "README.md"
+license = { text = "Creative Commons Attribution-NonCommercial 4.0 International" }
+authors = [{ name="ComPsy Group", email="tuncb@chop.edu" }]
+maintainers = [{ name="ComPsy Group", email="tuncb@chop.edu" }]
+keywords = ["computer vision","psychology","psychiatry","behavior","facial expressions","body actions"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering",
-    "License :: Free for non-commercial use",
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent"
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering",
+  "License :: Free for non-commercial use",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "scipy","cvxpy","numpy","scikit-learn","python-dateutil","PyWavelets",
+  "matplotlib","pandas","requests","paramiko","plotly","opencv-python","pillow","kaleido"
 ]
 
 [project.urls]
@@ -46,5 +30,12 @@ Homepage = "https://github.com/compsygroup/bitbox"
 Documentation = "https://github.com/compsygroup/bitbox/wiki"
 Issues = "https://github.com/compsygroup/bitbox/issues"
 
-[tool.hatch.build]
+# Tell Hatch which code to put in the wheel
+[tool.hatch.build.targets.wheel]
+packages = ["src/bitbox"]
+# include data files inside the package
 include = ["src/bitbox/data/*.csv"]
+
+# Optional but nice for source tarball
+[tool.hatch.build.targets.sdist]
+include = ["src/bitbox", "README.md", "pyproject.toml", "LICENSE"]

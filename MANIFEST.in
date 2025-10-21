@@ -1,0 +1,3 @@
+graft src/bitbox/data
+include README.md
+include LICENSE*

@@ -5,7 +5,7 @@ from ..utilities import check_data_type
 import numpy as np
 import pandas as pd
 
-def normalizeExpressions3DI(exps, signed=False):
+def normalizeExpressions(exps, proc='3DI', signed=False):
     # check data type
     if not check_data_type(exps, 'expression'):
         raise ValueError("Only 'expression' data can be used for normalization. Make sure to use the correct data type.")
@@ -14,7 +14,7 @@ def normalizeExpressions3DI(exps, signed=False):
     exp = exps['data']
     
     # read stats
-    with ir.open_text(data, "expression_noise_signal_stats_3DI.csv", encoding="utf-8") as stats_path:
+    with ir.open_text(data, f"expression_noise_signal_stats_{proc}.csv", encoding="utf-8") as stats_path:
         stats = np.loadtxt(stats_path, delimiter=',')
         L = stats[:,0]    # (1,79)
         U = stats[:,1]    # (1,79)
