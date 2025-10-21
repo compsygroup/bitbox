@@ -27,7 +27,7 @@ This function only accepts [global](facial-expressions.md#expression-related-glo
 from bitbox.expressions import diversity
 
 # estimate global expression coefficients
-exp_global, pose, lands3D = processor.fit()
+exp_global, pose, lands3D = processor.fit(normalize=True)
 
 # compute diversity
 diversity_scores = diversity(exp_global, scales=6)

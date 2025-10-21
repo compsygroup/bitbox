@@ -53,11 +53,17 @@ exp_global, pose, lands3D = processor.fit()
 
 As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
 
-### Localized Expression Units
+By default, global expression coefficients will have varying scales/magnitudes. You can normalize them to have similar scales. This process also removes estimated noise, so you may end up with losing some data. Although we highly recommend using this option, please use with caution.
 
-{% hint style="danger" %}
-If you’re reading this note, it means the localized expression units feature isn’t quite ready for general use yet. Please avoid using this functionality for now. We expect it to be available within a few weeks—thanks for your patience!
-{% endhint %}
+```python
+# Noise removal and normalization
+exp_global, pose, lands3D = processor.fit(normalize=True)
+
+# same parameter can be used wiht run_all as well
+rects, lands, exp_global, pose, lands3D, exp_local = processor.run_all(normalize=True)
+```
+
+### Localized Expression Units
 
 The most widely used representation of facial expressions is Action Units (AUs), defined by the Facial Action Coding System (FACS). Each AU corresponds to a specific, localized movement of one or more facial muscles and is designed to be anatomically interpretable. Although FACS was originally developed for manual annotation, numerous computational tools now enable the automatic detection of AUs in video recordings. OpenFace is one such widely used tool. Bitbox will soon support OpenFace and generate AUs.
 
@@ -69,3 +75,9 @@ exp_local = processor.localized_expressions()
 ```
 
 As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](broken-reference) of facial expressions.
+
+{% hint style="warning" %}
+The ongoing research by our team on localized expression units chiefly uses 3DI-lite, thus local expression units using 3DI-lite may give better results than using 3DI.&#x20;
+{% endhint %}
+
+{% embed url="https://raw.githubusercontent.com/sariyanidi/FacialBasis/refs/heads/main/docs/vids/LFB_recoded.mp4" %}
