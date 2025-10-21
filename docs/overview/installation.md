@@ -32,8 +32,8 @@ The current version of Bitbox supports two face backends, namely 3DI and 3DI-lit
 Using Docker is usually straightforward. However, 3DI requires downloading an external face model, which involves individually registering and requesting access, and updating our image with this model.
 
 1. Download the Dockerfile. We have two options for [CUDA 11.8.0](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda11.8_cv4.5/Dockerfile) or [CUDA 12.2.2](https://raw.githubusercontent.com/compsygroup/bitbox/refs/heads/main/docker/cuda12.2_cv4.8/Dockerfile). Select the one that is most compatible with your NVIDIA GPU.
-2. Register and download the [face model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2\&id=downloads). This may take a few days. We cannot help with this step.
-3. Place the Dockerfile and the face model you downloaded (`01_MorphableModel.mat`) in the same directory
+2. Register and download the [face model](https://faces.dmi.unibas.ch/bfm/index.php?nav=1-2\&id=downloads). This is an automated process, and you should immediately get the download link in your email. Extract the model you downloaded and locate the file `01_MorphableModel.mat` .&#x20;
+3. Place the Dockerfile and the face model (`01_MorphableModel.mat`) in the same directory
 4.  Within this directory, run the following command to build the image
 
     ```bash
