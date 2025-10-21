@@ -1,5 +1,5 @@
 # Base image including 3DI but not the face model file
-FROM compsygroup/bitbox:20250507-cuda11.8.0-cudnn8-opencv4.5.5-ubuntu20.04
+FROM compsygroup/bitbox:20251017-cuda11.8.0-cudnn8-opencv4.5.5-ubuntu20.04
 
 # Add the model file 
 COPY 01_MorphableModel.mat /app/3DI/models/raw/
@@ -11,23 +11,6 @@ RUN python3 prepare_BFM.py
 
 WORKDIR /app/3DI_lite
 RUN python3 prepare_BFM.py
-
-# make 3DI-lite standalone (not dependent on 3DI)
-WORKDIR /app/3DI_lite
-RUN cp /app/3DI/video_detect_* .
-RUN cp /app/3DI/video_undistort .
-RUN cp -r /app/3DI/configs .
-RUN cp /app/3DI/models/deploy.prototxt models/
-RUN cp /app/3DI/models/res10_300x300_ssd_iter_140000_fp16.caffemodel models/
-RUN cp /app/3DI/models/haarcascade_frontalface_default.xml models/
-RUN cp /app/3DI/models/mmod_human_face_detector.dat models/
-RUN cp /app/3DI/models/opencv_face_detector* models/
-RUN cp /app/3DI/models/tf2onnx_onnx_model.onnx models/
-RUN cp -r /app/3DI/models/landmark_models models/
-RUN cp -r /app/3DI/models/dat_files models/
-RUN cp -r /app/3DI/models/MMs/ models/
-RUN cp -r /app/3DI/scripts/produce_canonicalized_3Dlandmarks.py scripts/
-RUN cp -r /app/3DI/scripts/common.py scripts/
-RUN cp -r /app/3DI/scripts/compute_local_exp_coefficients.py scripts/
+RUN cp -rf /app/3DI_lite/data/BFMmm-23660 /app/3DI_lite/models/MMs/.
 
 WORKDIR /app

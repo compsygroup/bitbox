@@ -1,5 +1,4 @@
 from bitbox.face_backend import FaceProcessor3DI as FP
-from bitbox.expressions import expressivity, asymmetry, diversity
 
 input_file = 'data/elaine.mp4'
 output_dir = 'output'

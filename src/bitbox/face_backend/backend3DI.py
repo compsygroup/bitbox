@@ -9,7 +9,7 @@ from .reader3DI import read_rectangles, read_landmarks
 from .reader3DI import read_pose, read_pose_lite
 from .reader3DI import read_expression, read_canonical_landmarks
 
-from .postProcess3DI import normalizeExpressions3DI
+from .postProcess3DI import normalizeExpressions
 
 class FaceProcessor3DI(FaceProcessor):
     def __init__(self, *args, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, **kwargs):
@@ -175,7 +175,7 @@ class FaceProcessor3DI(FaceProcessor):
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             if normalize:
-                out_exp = normalizeExpressions3DI(out_exp)
+                out_exp = normalizeExpressions(out_exp, proc='3DI')
             out_pose = read_pose(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             
@@ -223,10 +223,12 @@ class FaceProcessor3DI(FaceProcessor):
 
 
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, *args, basis_model='0.0.1.F591-cd-K32d', **kwargs):
+    def __init__(self, *args, morphable_model='BFMmm-23660', basis_model='local_basis_FacialBasis1.0', **kwargs):
         # Run the parent class init
         super().__init__(*args, **kwargs)
-        self.basis_model = basis_model
+        self.model_morphable = morphable_model
+        self.model_basis = basis_model
+        self.fast = False
 
         
         # specific file extension for 3DI-lite
@@ -239,10 +241,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                 raise ValueError("3DI-lite package is not found. Please make sure you defined BITBOX_3DI_LITE system variable or use our Docker image.")
             
             # prepare configuration files
-            if self.fast:
-                cfgid = 2
-            else:
-                cfgid = 1
+            cfgid = 1
             self.config_landmarks = os.path.join(self.execDIR, 'configs/%s.cfg%d.%s.txt' % (self.model_morphable, cfgid, self.model_landmark))
         
         # prepare metadata
@@ -257,12 +256,12 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
              
         # STEP 1-4: learn identity, shape and texture model, pose and expression
         self._execute('process_video.py',
-                    [self.file_input, self.file_landmarks, self.file_expression_smooth, self.file_shape_coeff, self.file_texture_coeff, self.file_illumination, self.file_pose_smooth],
+                    [self.file_input, self.file_landmarks, self.file_expression_smooth, self.file_pose_smooth, self.file_shape_coeff, self.file_texture_coeff, self.file_illumination],
                     "expression and pose estimation",
                     output_file_idx=[-5, -4, -3, -2, -1])
         
         # STEP 5: Canonicalized landmarks
-        self._execute('scripts/produce_canonicalized_3Dlandmarks.py',
+        self._execute('produce_canonicalized_3Dlandmarks.py',
                     [self.file_expression_smooth, self.file_landmarks_canonicalized, self.model_morphable],
                     "canonicalized landmark estimation",
                     output_file_idx=-2)
@@ -280,10 +279,27 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             if normalize:
-                out_exp = normalizeExpressions3DI(out_exp)
+                out_exp = normalizeExpressions(out_exp, proc='3DIl')
             out_pose = read_pose_lite(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             
             return out_exp, out_pose, out_land_can
+        else:
+            return None
+        
+    def localized_expressions(self, normalize=True):
+        # check if canonical landmark detection was run and successful
+        if self.cache.check_file(self._local_file(self.file_expression_smooth), self.base_metadata) > 0:
+            raise ValueError("Expression quantification is not run or failed. Please run fit() method first.")
+        
+        self._execute('compute_local_exp_coefficients.py',
+                    [self.file_expression_smooth, self.file_expression_localized, int(normalize)],
+                    "localized expression estimation",
+                    output_file_idx=-2)
+        
+        if self.return_output == 'file':
+            return self._local_file(self.file_expression_localized)
+        elif self.return_output == 'dict':
+            return read_expression(self._local_file(self.file_expression_localized))
         else:
             return None

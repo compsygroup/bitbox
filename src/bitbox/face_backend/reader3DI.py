@@ -126,17 +126,27 @@ def read_expression(file):
                   're': (16,20),
                   'ul': (20,25),
                   'll': (25,32)}
-        
         column_list = []
         for key, value in le_idx.items():
             for i, v in enumerate(range(value[0], value[1])):
                 column_list.append(f'{key}{i}')
-                
+        format = 'for each frame (rows) [lb0, lb1, ...] values corresponding to localized expression coefficients'
+    elif num_coeff == 50:
+        schema = '3DIlite-L50'
+        le_idx = {'lb': (0,5),
+                  'rb': (5,10),
+                  'no': (10,13),
+                  'le': (13,20),
+                  're': (20,27),
+                  'mo': (27,50)}
+        column_list = []
+        for key, value in le_idx.items():
+            for i, v in enumerate(range(value[0], value[1])):
+                column_list.append(f'{key}{i}')
         format = 'for each frame (rows) [lb0, lb1, ...] values corresponding to localized expression coefficients'
     else:
         raise ValueError(f"Unrecognized expression schema.")
       
-    
     data = pd.DataFrame(_data, columns=column_list)  
 
     dict = {
