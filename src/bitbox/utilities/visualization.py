@@ -3191,15 +3191,18 @@ else if (HAS_POSE) {
   const Z_GAP = 8; // try 5–8 if still tight
 
   data = [];
+  const exprColors = [];
   for (let g = 0; g < EXPR.ge_count; g++) {
     const zConst = new Array(1).fill(g * Z_GAP); // seed; we’ll expand during updates
+    const lineColor = colorway[g % colorway.length];
+    exprColors.push(lineColor);
     data.push({
       type: 'scatter3d',
       mode: 'lines',
       x: [0.0],
       y: [EXPR.line_z_by_ge[g][0]],
       z: zConst,
-      line: { width: 2, color: colorway[g % colorway.length] },
+      line: { width: 2, color: lineColor },
       showlegend: false,
       hoverinfo: 'x+y+z'
     });
@@ -3211,7 +3214,7 @@ else if (HAS_POSE) {
     x: new Array(EXPR.ge_count).fill(0),
     y: EXPR.marker_z_by_frame[0],
     z: [...Array(EXPR.ge_count).keys()].map(i => i * Z_GAP),
-    marker: { size: 4 },
+    marker: { size: 4, color: exprColors, opacity: 0.85 },
     showlegend: false,
     hoverinfo: 'x+y+z'
   });
