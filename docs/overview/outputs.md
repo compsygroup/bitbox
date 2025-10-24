@@ -143,6 +143,10 @@ The first three values (Tx, Ty, Tz) are the x, y, z coordinates of the translati
 The frame count for pose estimation (287) is one less than the frames reported for face rectangles (288). This difference arises because pose estimation occurs after 3D fitting, which involves comparing subsequent frames.
 {% endhint %}
 
+{% hint style="danger" %}
+When using 3DI-lite as the face processor, `pose` variable only includes rotation angles and not translation coordinates.&#x20;
+{% endhint %}
+
 #### 2D Face Landmarks
 
 The dictionary containing the coordinates for the facial landmarks is structured as follows.
