@@ -40,15 +40,15 @@ def read_pose(file):
 def read_pose_lite(file):
     ext = file.split(".")[-1]
     _data = np.loadtxt(file)
-    #first three are translation ignore middle three last three are angles
-    _data = _data[:, [0, 1, 2, 3, 4, 5]]
-    data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
+    _data = _data[:, [3, 4, 5]]
+    # only rotations are meaningful in 3DI-lite
+    data = pd.DataFrame(_data, columns=['Rx', 'Ry', 'Rz'])  
 
     dict = {
         'backend': ext,
         'frame count': data.shape[0],
         'type': 'pose',
-        'format': 'for each frame (rows) [Tx, Ty, Tz, Rx, Ry, Rz] values of the detected face pose',
+        'format': 'for each frame (rows) [Rx, Ry, Rz] values of the detected face pose',
         'dimension': 3,
         'data': data
     }

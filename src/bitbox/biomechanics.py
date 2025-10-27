@@ -1,34 +1,7 @@
-from .utilities import get_data_values, check_data_type
+from .utilities import check_data_type, convert_to_coords
 
 import numpy as np
 from typing import Union, Sequence
-
-def _convert_to_coords(data: dict, angular: bool = False) -> np.ndarray:
-    coords = get_data_values(data)
-    d = data['dimension']
-    
-    if check_data_type(data, ['landmark', 'landmark-can']):
-        # convert the shape
-        # (N,M,d) array. N: number of frames, M: number of landmarks, d: dimension (2 for 2D, 3 for 3D).
-        N, D = coords.shape
-        M = D // d
-        coords = coords.reshape(N, M, d)
-    elif check_data_type(data, 'rectangle'):
-        # compute the center of the bounding box
-        x, y, w, h = coords.T  # each is (N,)
-        cx = x + w / 2
-        cy = y + h / 2
-        coords = np.stack((cx, cy), axis=1) # (N,2)
-    elif check_data_type(data, 'pose'):
-        if angular:
-            # just keep the rotation part
-            coords = coords[:, 3:]  # (N,3)
-        else:
-            # just keep the translation part
-            coords = coords[:, :3]  # (N,3)
-            
-    return coords
-
 
 def _check_reference(reference: Sequence[int]) -> bool:
     if not isinstance(reference, (list, np.ndarray)):
@@ -60,7 +33,7 @@ def motion_kinematics(data: dict, fps: int = 30, angular: bool = False) -> list:
         raise ValueError("Only 'landmark', 'pose', or 'rectangle' data can be used for kinematics calculations. Make sure to use the correct data type.")
     
     # convert data to coordinates
-    coords = _convert_to_coords(data, angular=angular)
+    coords = convert_to_coords(data, angular=angular)
 
     if coords.shape[0] < 4:
         raise ValueError("Not enough frames to calculate motion profile. At least 4 frames are required.")
@@ -107,7 +80,7 @@ def motion_smoothness(data: dict, fps: int = 30, angular: bool = False) -> list:
         raise ValueError("Only 'landmark', 'pose', or 'rectangle' data can be used for kinematics calculations. Make sure to use the correct data type.")
     
     # convert data to coordinates
-    coords = _convert_to_coords(data, angular=angular)
+    coords = convert_to_coords(data, angular=angular)
 
     if coords.shape[0] < 4:
         raise ValueError("Not enough frames to calculate motion profile. At least 4 frames are required.")
@@ -143,7 +116,7 @@ def motion_smoothness(data: dict, fps: int = 30, angular: bool = False) -> list:
     return [jerk, ldj]
 
 
-def relative_motion(data: dict, reference: Union[Sequence[int], str] = "mean") -> list:
+def relative_motion(data: dict, reference: Union[Sequence[int], str] = "mean", angular: bool = False) -> list:
     """
     Calculate displacement statistics with respect to a set of reference coordinates.
 
@@ -160,7 +133,7 @@ def relative_motion(data: dict, reference: Union[Sequence[int], str] = "mean") -
         raise ValueError("Only 'landmark', 'pose', or 'rectangle' data can be used for relative motion stats. Make sure to use the correct data type.")
 
     # convert data to coordinates
-    coords = _convert_to_coords(data)
+    coords = convert_to_coords(data, angular=angular)
     
     mind = 0
     avgd = 0
