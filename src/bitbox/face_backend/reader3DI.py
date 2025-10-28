@@ -21,8 +21,9 @@ def read_rectangles(file):
 def read_pose(file):
     ext = file.split(".")[-1]
     _data = np.loadtxt(file)
-    #first three are translation ignore middle three last three are angles
-    _data = _data[:, [0, 1, 2, 6, 7, 8]]
+    # first three are translation, ignore middle three (Euclid-Rodrigues parameterization), last three are angles in radians
+    # we change the order to have pitch (Rx), yaw (Ry), roll (Rz)
+    _data = _data[:, [0, 1, 2, 7, 6, 8]]
     data = pd.DataFrame(_data, columns=['Tx', 'Ty', 'Tz', 'Rx', 'Ry', 'Rz'])  
 
     dict = {
