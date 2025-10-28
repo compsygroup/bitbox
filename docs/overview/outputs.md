@@ -137,10 +137,14 @@ print(pose)
  [287 rows x 6 columns]}
 ```
 
-The first three values (Tx, Ty, Tz) are the x, y, z coordinates of the translation vector and the last three values (Rx, Ry, Rz) are yaw, pitch, roll angles of the rotation vector.
+The first three values (Tx, Ty, Tz) are the x, y, z coordinates of the translation vector and the last three values (Rx, Ry, Rz) are pitch, yaw, roll angles in radians of the rotation vector.
 
 {% hint style="warning" %}
 The frame count for pose estimation (287) is one less than the frames reported for face rectangles (288). This difference arises because pose estimation occurs after 3D fitting, which involves comparing subsequent frames.
+{% endhint %}
+
+{% hint style="danger" %}
+When using 3DI-lite as the face processor, `pose` variable only includes rotation angles and not translation coordinates.&#x20;
 {% endhint %}
 
 #### 2D Face Landmarks

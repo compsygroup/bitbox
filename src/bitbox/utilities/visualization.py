@@ -2737,7 +2737,7 @@ def write_video_overlay_html(
     has_3d_any = has_can3d or has_pose or has_expr_for_3d
     has_expr_any = bool(has_expr_raw)  # governs new 2D plots + sidebar
 
-    local_prefixes = ('lb','rb','no','le','re','ul','ll')
+    local_prefixes = ('lb','rb','no','le','re','ul','ll','mo')
 
     cols_source = []
     if expr_df is not None and not expr_df.empty:
@@ -3191,15 +3191,18 @@ else if (HAS_POSE) {
   const Z_GAP = 8; // try 5–8 if still tight
 
   data = [];
+  const exprColors = [];
   for (let g = 0; g < EXPR.ge_count; g++) {
     const zConst = new Array(1).fill(g * Z_GAP); // seed; we’ll expand during updates
+    const lineColor = colorway[g % colorway.length];
+    exprColors.push(lineColor);
     data.push({
       type: 'scatter3d',
       mode: 'lines',
       x: [0.0],
       y: [EXPR.line_z_by_ge[g][0]],
       z: zConst,
-      line: { width: 2, color: colorway[g % colorway.length] },
+      line: { width: 2, color: lineColor },
       showlegend: false,
       hoverinfo: 'x+y+z'
     });
@@ -3211,7 +3214,7 @@ else if (HAS_POSE) {
     x: new Array(EXPR.ge_count).fill(0),
     y: EXPR.marker_z_by_frame[0],
     z: [...Array(EXPR.ge_count).keys()].map(i => i * Z_GAP),
-    marker: { size: 4 },
+    marker: { size: 4, color: exprColors, opacity: 0.85 },
     showlegend: false,
     hoverinfo: 'x+y+z'
   });
@@ -3288,6 +3291,7 @@ else if (HAS_POSE) {
   //  Right Eye:  re0–re3
   //  Upper Lip:  ul0–ul4
   //  Lower Lip:  ll0–ll6
+  //  Mouth:      mo0–mo22 (fallback when lip regions absent)
   const REGION_SPECS = [
     {label:'Left Brow',  key:'lb', max:3},
     {label:'Right Brow', key:'rb', max:3},
@@ -3296,6 +3300,7 @@ else if (HAS_POSE) {
     {label:'Right Eye',  key:'re', max:3},
     {label:'Upper Lip',  key:'ul', max:4},
     {label:'Lower Lip',  key:'ll', max:6},
+    {label:'Mouth',      key:'mo', max:24},
   ];
 
   const sideCol   = document.getElementById('sideCol');
@@ -3325,6 +3330,9 @@ else if (HAS_POSE) {
         if (matched) idxs.push(i);
       }
       if (idxs.length>0){
+        if (spec.key === 'mo' && (groups['ul'] || groups['ll'])) {
+          return;
+        }
         groups[spec.key] = {label: spec.label, idxs: idxs};
       }
     });
@@ -3466,7 +3474,7 @@ function render2d(recreateLayout){
     const id = d.id || '';
     if(!id.startsWith('plot2d-')) return;
     const key = id.replace('plot2d-','');
-    const isRegion = key && REGION_GROUPS && REGION_GROUPS[key];
+    const isRegion = key && REGION_GROUPS && REGION_GROUPS[key] && selectedRegions.has(key);
     const isGlobal = key.startsWith('ge-') && selectedGlobals.has(Number(key.slice(3)));
 
     if (!isRegion && !isGlobal) {
@@ -3480,7 +3488,7 @@ function initSidebarAnd2D(){
   if (!HAS_EXPR_ANY || !EXPR || !EXPR.ge_count) return;
 
   const cols = (EXPR.ge_cols || []).map(c => String(c).toLowerCase());
-  const LOCAL_PREFIXES = ['lb','rb','no','le','re','ul','ll'];
+  const LOCAL_PREFIXES = ['lb','rb','no','le','re','ul','ll','mo'];
 
   const hasLocal  = cols.some(name => LOCAL_PREFIXES.some(p => name.startsWith(p)));
   const hasGlobal = cols.some(name => !LOCAL_PREFIXES.some(p => name.startsWith(p))); // NEW

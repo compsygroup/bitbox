@@ -108,7 +108,7 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def fit(self, normalize=False):
+    def fit(self, normalize=False, k=1):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -175,7 +175,7 @@ class FaceProcessor3DI(FaceProcessor):
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             if normalize:
-                out_exp = normalizeExpressions(out_exp, proc='3DI')
+                out_exp = normalizeExpressions(out_exp, proc='3DI', k=k)
             out_pose = read_pose(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             
@@ -202,16 +202,16 @@ class FaceProcessor3DI(FaceProcessor):
             return None
 
 
-    def run_all(self, normalize=True):
+    def run_all(self, normalize=True, k=1):
         rect = self.detect_faces()
         land = self.detect_landmarks()
         if self.return_output == 'file':
-            exp = self.fit(normalize=normalize)
+            exp = self.fit(normalize=normalize, k=k)
         elif self.return_output == 'dict':
-            exp_glob, pose, land_can = self.fit(normalize=normalize)
+            exp_glob, pose, land_can = self.fit(normalize=normalize, k=k)
         else:
-            self.fit(normalize=normalize)
-        exp_loc = self.localized_expressions(normalize=normalize)
+            self.fit(normalize=normalize, k=k)
+        exp_loc = self.localized_expressions(normalize=True)
         
         if self.return_output == 'file':
             files = (rect) + (land) + exp + (exp_loc)
@@ -249,7 +249,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         self.base_metadata['local_bases'] = self.model_basis   
         
                 
-    def fit(self,normalize=False):
+    def fit(self, normalize=False, k=1):
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -279,7 +279,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         elif self.return_output == 'dict':
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             if normalize:
-                out_exp = normalizeExpressions(out_exp, proc='3DIl')
+                out_exp = normalizeExpressions(out_exp, proc='3DIl', k=k)
             out_pose = read_pose_lite(self._local_file(self.file_pose_smooth))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             

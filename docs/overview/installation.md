@@ -44,7 +44,7 @@ Using Docker is usually straightforward. However, 3DI requires downloading an ex
 {% endtab %}
 
 {% tab title="Native (Not Recommended)" %}
-If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
+If you can install C++/CUDA codes from the source code, however, please go ahead and install 3DI from [here](https://github.com/compsygroup/3DI/tree/v0.3.1). The instructions are provided there. This approach will install the 3DI as a native application on your system and can be slightly faster than using Docker.
 
 Similarly, 3DI-lite can be installed from ... (COMING SOON)
 {% endtab %}
