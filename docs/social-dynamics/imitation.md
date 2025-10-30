@@ -69,3 +69,10 @@ By default, positive and negative correlations are treated the same (the maximum
 # Only positive correlations are preferred
 corr_mean, corr_std, corr_lag = imitation(exp_glob_p, exp_glob_r, polarity=False)
 ```
+
+If you want to access detailed correlation values and lags for every individual window rather than aggregated statistics, you can set `stats=False`. In that case, the function returns 3D arrays (Nwindows x Nsignals1 x Nsignals2) that contain the pairwise correlation values (or corresponding lags) for each window. This allows you to analyze how the imitation quality changes dynamically throughout the video.
+
+```python
+# Get correlation values and lags for each window
+corr_vals, corr_lags = imitation(exp_glob_p, exp_glob_r, stats=False)
+```
