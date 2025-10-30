@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from ..utilities import recover_full_rodrigues, rodrigues_to_euler
 
 def read_rectangles(file):
     ext = file.split(".")[-1]
@@ -38,12 +39,34 @@ def read_pose(file):
     return dict
 
 
-def read_pose_lite(file):
+def read_pose_lite(file, landmark_file):
+    print(file)
+    print(landmark_file)
     ext = file.split(".")[-1]
-    _data = np.loadtxt(file)
-    _data = _data[:, [3, 4, 5]]
+    rodrigues = np.loadtxt(file)
+    landmarks_2d = np.loadtxt(landmark_file)
     # only rotations are meaningful in 3DI-lite
-    data = pd.DataFrame(_data, columns=['Rx', 'Ry', 'Rz'])  
+    rodrigues = rodrigues[:, 3:]
+    
+    # recover full Rodrigues in original image coords
+    rodrigues[:,0] = -rodrigues[:,0]    
+    
+    rodrigues_corr = recover_full_rodrigues(landmarks_2d, rodrigues)
+    # convert to Euler angles
+    euler = rodrigues_to_euler(rodrigues_corr)
+
+    # we change the order to have pitch (Rx), yaw (Ry), roll (Rz)
+    euler = euler[:, [1, 0, 2]]
+    
+    # filter out implausible angles
+    # pitch: +-45 [−0.785,0.785]
+    # yaw: +-90 [−1.57,1.57]
+    # roll: +-45 [−0.785,0.785]
+    euler[np.abs(euler[:,0])>0.785, 0] = np.nan
+    euler[np.abs(euler[:,1])>1.57, 1] = np.nan
+    euler[np.abs(euler[:,2])>0.785, 2] = np.nan
+    
+    data = pd.DataFrame(euler, columns=['Rx', 'Ry', 'Rz'])
 
     dict = {
         'backend': ext,

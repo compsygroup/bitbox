@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
   "scipy","cvxpy","numpy","scikit-learn","python-dateutil","PyWavelets",
-  "matplotlib","pandas","requests","paramiko","plotly","opencv-python","pillow","kaleido"
+  "matplotlib","pandas","requests","paramiko","plotly","opencv-python","pillow","kaleido","scikit-image"
 ]
 
 [project.urls]

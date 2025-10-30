@@ -280,7 +280,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
             out_exp = read_expression(self._local_file(self.file_expression_smooth))
             if normalize:
                 out_exp = normalizeExpressions(out_exp, proc='3DIl', k=k)
-            out_pose = read_pose_lite(self._local_file(self.file_pose_smooth))
+            out_pose = read_pose_lite(self._local_file(self.file_pose_smooth), self._local_file(self.file_landmarks))
             out_land_can = read_canonical_landmarks(self._local_file(self.file_landmarks_canonicalized))
             
             return out_exp, out_pose, out_land_can

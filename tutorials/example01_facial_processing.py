@@ -1,8 +1,8 @@
 from bitbox.face_backend import FaceProcessor3DI as FP
 
 # define input file and output directory
-input_file = 'data/birkan_pitch_yaw_roll.mp4'
-output_dir = 'output/birkan_pitch_yaw_roll'
+input_file = 'data/elaine.mp4'
+output_dir = 'output'
 
 # define a face processor
 processor = FP(runtime='bitbox:latest')
