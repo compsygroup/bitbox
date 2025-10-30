@@ -40,8 +40,6 @@ def read_pose(file):
 
 
 def read_pose_lite(file, landmark_file):
-    print(file)
-    print(landmark_file)
     ext = file.split(".")[-1]
     rodrigues = np.loadtxt(file)
     landmarks_2d = np.loadtxt(landmark_file)
