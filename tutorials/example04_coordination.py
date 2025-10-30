@@ -4,7 +4,7 @@ from bitbox.social import coordination
 import numpy as np
 
 input_file = 'data/elaine.mp4'
-output_dir = 'output/elaine'
+output_dir = 'output'
 
 # define a face processor
 processor = FP(runtime='bitbox:latest')
