@@ -52,5 +52,6 @@ setup(
         "opencv-python",
         "pillow",
         "kaleido",
+        "scikit-image",
     ],
 )
