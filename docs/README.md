@@ -15,9 +15,9 @@ layout:
     visible: false
 ---
 
-# Overview
+# Introduction
 
-<h2 align="center">Bitbox</h2>
+<h2 align="center">Behavioral Imaging Toolbox: Bitbox</h2>
 
 **Bitbox is the open-source Python library for computational analysis of nonverbal human behavior.** Bitbox  makes it easy to study facial expressions, head and body actions, eye gaze (coming soon), and speech behavior (coming soon) from videos and images.
 
