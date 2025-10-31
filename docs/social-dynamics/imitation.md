@@ -45,12 +45,14 @@ corr_mean, corr_std, corr_lag = imitation(exp_glob_p, exp_glob_r, width=1.1, ste
 ```
 
 {% hint style="success" %}
-`corr_mean`: the average correlation between two signals across all time windows, \
-`corr_std`: the standard deviation of correlations, \
-`corr_lag`: the optimal lag that maximizes the correlation.
-{% endhint %}
+**Correlation Mean**: The average correlation between two signals across all time windows.
+
+**Correlation Std**: The standard deviation of correlations across all time windows.
+
+**Lag**: The average optimal lag that maximizes the correlation across all time windows.
 
 All three outputs are matrices where rows correspond to the first set of signals (_e.g._, 79 global expression units for the participant) and columns to the second (_e.g._, 79 global expression units for the model).
+{% endhint %}
 
 Bitbox automatically learns the optimal lag between signals. In imitation mode, lag is restricted to one direction — a time point in the first signal can match the same or an earlier point in the reference signal (you can imitate a model slightly behind, but not ahead). To disable this causality constraint and allow lags in both directions, set `casuality=False`. Note that lags are defined relative to the second signal; if you need bidirectional lags, use the [coordination](coordination.md) function instead.
 
