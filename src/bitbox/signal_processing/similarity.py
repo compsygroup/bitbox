@@ -97,7 +97,7 @@ def windowed_cross_correlation_lagged_one_sided(X, Y, width=0.5, lag=None, step=
     
     
     # --- restrict to NON-POSITIVE lags only (indices 0..L; idx L == zero lag) ---
-    # if this is used, then in remaining of the code every dimension of 2L+1
+    # if this is used, then in the remaining of the code every dimension of 2L+1
     # becomes L+1
     if causality:
         Ywin = Ywin[..., :L+1]              # (Nwin, Ny, W, L+1)
