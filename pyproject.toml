@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bitbox"
-version = "2025.10.dev1"   # PEP 440-friendly versioning
+version = "2025.10.dev2"   # PEP 440-friendly versioning
 requires-python = ">=3.8"
 description = "Behavioral Imaging Toolbox"
 readme = "README.md"

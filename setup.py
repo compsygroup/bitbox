@@ -5,7 +5,7 @@ README = Path(__file__).with_name("README.md").read_text(encoding="utf-8")
 
 setup(
     name="bitbox",
-    version="2025.10.dev1",  # PEP 440: YYYY.MM.devN
+    version="2025.10.dev2",  # PEP 440: YYYY.MM.devN
     description="Behavioral Imaging Toolbox",
     long_description=README,
     long_description_content_type="text/markdown",
