@@ -17,4 +17,6 @@ layout:
 
 # Social Gaze
 
-Coming Soon
+{% hint style="warning" %}
+Stay tuned! This feature will be available soon.
+{% endhint %}
