@@ -28,7 +28,7 @@ New to Bitbox? Check out the [installation](overview/installation.md) and [getti
 Bitbox gives you all tools you need to study motor, social, emotional behavior.
 
 * Psychomotor function: spatial extent, smoothness, speed, energy, temporal phases&#x20;
-* Affective expression: expressive motion units, symmetry, expressivity, diversity, arousal/valence (coming soon)
+* Affective expression: expressive motion units, symmetry, expressivity, diversity, arousal
 * Interpersonal dynamics: imitation, coordination, social gaze (coming soon), speech behavior (coming soon)
 
 Bitbox can run on a laptop as a standalone processor, currently requiring an NVIDIA GPU. If more computational power is needed, Bitbox can also operate on a powerful server, providing a <mark style="color:purple;">`Python`</mark> client API. Additionally, Bitbox can be used on a high-performance computing cluster by submitting SLURM jobs (coming soon).
