@@ -23,7 +23,7 @@ Bitbox can measure how closely two sets of signals move together over time. This
 
 The main difference between coordination and [imitation](imitation.md) is that, in coordination, time lags are allowed in both directions—that is, each signal can lead or follow the other—making it suitable for analyzing mutual synchronization rather than one-way following.
 
-This function accepts only landmarks ([2D ](../overview/outputs.md#id-2d-face-landmarks)or [3D](../overview/outputs.md#id-3d-face-landmarks)), head pose, or facial expressions ([global](../affective-expressions/facial-expressions.md#expression-related-global-deformations) or [local](../affective-expressions/facial-expressions.md#localized-expression-units)). It computes a windowed, lagged cross-correlation between all pairs of signals.
+This function accepts landmarks ([2D ](../overview/outputs.md#id-2d-face-landmarks)or [3D](../overview/outputs.md#id-3d-face-landmarks)), head pose, or facial expressions ([global](../affective-expressions/facial-expressions.md#expression-related-global-deformations) or [local](../affective-expressions/facial-expressions.md#localized-expression-units)). It computes a windowed, lagged cross-correlation between all pairs of signals.
 
 ```python
 from bitbox.social import coordination
