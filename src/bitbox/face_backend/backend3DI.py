@@ -241,10 +241,10 @@ class FaceProcessor3DI(FaceProcessor):
         Localized expression coefficients were computed using Facial Basis [5]. 
 
         [1] TBN
-        [2] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2024). Inequality-Constrained 3D Morphable Face Model Fitting. IEEE Transactions on Pattern Analysis and Machine Intelligence, 46(2), 1305–1318. https://doi.org/10.1109/TPAMI.2023.3334948
-        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2099). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
-        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173–7182. https://doi.org/10.1109/CVPR42600.2020.00720
-        [5] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1–10. https://doi.org/10.1109/fg61629.2025.11099288
+        [2] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2024). Inequality-Constrained 3D Morphable Face Model Fitting. IEEE Transactions on Pattern Analysis and Machine Intelligence, 46(2), 1305-1318. https://doi.org/10.1109/TPAMI.2023.3334948
+        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2009). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
+        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173-7182. https://doi.org/10.1109/CVPR42600.2020.00720
+        [5] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1-10. https://doi.org/10.1109/fg61629.2025.11099288
         """
         print(text)
         
@@ -345,8 +345,8 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         Localized expression coefficients were computed using Facial Basis [2]. 
 
         [1] TBN
-        [2] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1–10. https://doi.org/10.1109/fg61629.2025.11099288
-        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2099). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
-        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173–7182. https://doi.org/10.1109/CVPR42600.2020.00720
+        [2] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1-10. https://doi.org/10.1109/fg61629.2025.11099288
+        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2009). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
+        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173-7182. https://doi.org/10.1109/CVPR42600.2020.00720
         """
         print(text)
