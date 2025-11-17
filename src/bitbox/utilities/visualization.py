@@ -10,13 +10,19 @@ Provides utilities to render interactive visualizations used across Bitbox:
 """
 from __future__ import annotations
 # -----------------------------------------------------------------------------
-# Imports 
+# Imports
 # -----------------------------------------------------------------------------
 import base64
 import json
 import os
+import shutil
+import subprocess
+import zlib
+from pathlib import Path
 from string import Template
+from functools import lru_cache
 from typing import List, Optional, Sequence, Tuple, Union
+from concurrent.futures import ThreadPoolExecutor, Future
 
 import cv2
 import numpy as np
@@ -24,16 +30,110 @@ import pandas as pd
 import plotly.io as pio
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
-import os, traceback
+from plotly.utils import PlotlyJSONEncoder
+import traceback
 
+# Local utilities
+from .system import detect_container_type
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
 TARGET_SIZE: Tuple[int, int] = (240, 300)
+_BFM_REQUIRED_FILES = ("X0_mean.dat", "Y0_mean.dat", "Z0_mean.dat", "tl.dat")
+_BFM_REQUIRED_EXPRESSION_FILES = ("E/EX_79.dat", "E/EY_79.dat", "E/EZ_79.dat")
 
 # -----------------------------------------------------------------------------
 # Common Helpers (I/O, cropping, sampling)
 # -----------------------------------------------------------------------------
+
+def _bfm_dir_has_assets(path: Optional[str]) -> bool:
+    if not path:
+        return False
+    target = os.path.abspath(os.path.expanduser(str(path)))
+    required = tuple(_BFM_REQUIRED_FILES) + _BFM_REQUIRED_EXPRESSION_FILES
+    for req in required:
+        if not os.path.exists(os.path.join(target, req)):
+            return False
+    return True
+
+
+def _ensure_docker_bfm_assets(image: str, exec_dir: Optional[str]) -> Optional[str]:
+    """
+    When running inside a dockerized runtime, copy the BFM assets out of the image
+    into a local cache so downstream code can read them from the host filesystem.
+    """
+    if not image:
+        return None
+
+    cache_root = Path.home() / ".cache" / "bitbox" / "bfm"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    image_key = image.replace("/", "_").replace(":", "_")
+    image_cache = cache_root / image_key
+    image_cache.mkdir(parents=True, exist_ok=True)
+    bfm_cache_dir = image_cache / "BFMmm-19830"
+
+    if _bfm_dir_has_assets(str(bfm_cache_dir)):
+        return str(bfm_cache_dir)
+
+    inner_candidates: List[str] = []
+    suffixes = ("models/MMs/BFMmm-19830", "MMs/BFMmm-19830", "BFMmm-19830")
+    base_candidates: List[str] = []
+
+    if isinstance(exec_dir, str) and exec_dir.strip():
+        base_candidates.append(exec_dir.strip())
+
+    base_candidates.extend([
+        "/app/3DI",
+        "/app/3DI_lite",
+    ])
+
+    seen: set = set()
+    for base in base_candidates:
+        base_norm = base.rstrip("/ ")
+        if not base_norm:
+            continue
+        for suffix in suffixes:
+            candidate = os.path.join(base_norm, suffix)
+            if candidate not in seen:
+                inner_candidates.append(candidate)
+                seen.add(candidate)
+
+    for suffix in suffixes:
+        candidate = f"/{suffix}"
+        if candidate not in seen:
+            inner_candidates.append(candidate)
+            seen.add(candidate)
+
+    try:
+        container_id = subprocess.check_output(
+            ["docker", "create", image, "true"],
+            text=True,
+        ).strip()
+    except Exception:
+        return None
+
+    try:
+        for candidate in inner_candidates:
+            candidate = candidate.rstrip("/ ")
+            if not candidate:
+                continue
+            try:
+                if bfm_cache_dir.exists():
+                    shutil.rmtree(bfm_cache_dir, ignore_errors=True)
+                subprocess.run(
+                    ["docker", "cp", f"{container_id}:{candidate}", str(image_cache)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except subprocess.CalledProcessError:
+                continue
+            if _bfm_dir_has_assets(str(bfm_cache_dir)):
+                return str(bfm_cache_dir)
+        return None
+    finally:
+        subprocess.run(["docker", "rm", "-f", container_id], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 def get_frame(video_path: str, frame_idx: int) -> np.ndarray:
     """Load a single RGB frame by 0-based index from a video on disk.
@@ -141,6 +241,132 @@ def _find_col(df: pd.DataFrame, candidates):
             return hit
     return None
 
+def _resolve_bfm_model_dir(
+    model_dir: Optional[str] = None,
+    extra_roots: Optional[Sequence[str]] = None,
+) -> str:
+    """
+    Locate the prepared BFMmm-19830 assets directory.
+
+    The search order honours an explicit `model_dir`, followed by a set of commonly
+    used environment variables and finally a couple of repository-relative fallbacks.
+    """
+    candidates: List[str] = []
+    if model_dir:
+        candidates.append(model_dir)
+
+    if extra_roots:
+        for root in extra_roots:
+            if root:
+                candidates.append(root)
+
+    for key in ("BITBOX_BFM19830_DIR", "BITBOX_3DI", "BITBOX_3DI_LITE"):
+        value = os.environ.get(key)
+        if value:
+            candidates.append(value)
+
+    here = os.path.abspath(os.path.dirname(__file__))
+    candidates.append(os.path.abspath(os.path.join(here, "..", "..", "..", "3DI-0.2.0", "build")))
+    candidates.append(os.path.abspath(os.path.join(os.getcwd(), "3DI-0.2.0", "build")))
+
+    checked: set = set()
+    to_check: List[str] = []
+    for base in candidates:
+        if not base:
+            continue
+        base_abs = os.path.abspath(os.path.expanduser(str(base)))
+        if base_abs not in checked:
+            checked.add(base_abs)
+            to_check.append(base_abs)
+
+    suffixes = (
+        "",
+        os.path.join("models", "MMs", "BFMmm-19830"),
+        os.path.join("MMs", "BFMmm-19830"),
+        "BFMmm-19830",
+    )
+    required = tuple(_BFM_REQUIRED_FILES) + _BFM_REQUIRED_EXPRESSION_FILES
+    visited: set = set()
+
+    for base in to_check:
+        for suffix in suffixes:
+            path = os.path.join(base, suffix) if suffix else base
+            if path in visited:
+                continue
+            visited.add(path)
+            if not os.path.isdir(path):
+                continue
+            missing = [req for req in required if not os.path.exists(os.path.join(path, req))]
+            if not missing:
+                return path
+
+    raise FileNotFoundError(
+        "Unable to locate BFMmm-19830 assets. Set BITBOX_3DI (or BITBOX_BFM19830_DIR) or pass model_dir explicitly."
+    )
+
+
+@lru_cache(maxsize=4)
+def _load_bfm_assets_cached(resolved_dir: str) -> dict:
+    resolved_dir = os.path.abspath(resolved_dir)
+
+    X0 = np.loadtxt(os.path.join(resolved_dir, "X0_mean.dat")).astype(np.float32)
+    Y0 = np.loadtxt(os.path.join(resolved_dir, "Y0_mean.dat")).astype(np.float32)
+    Z0 = np.loadtxt(os.path.join(resolved_dir, "Z0_mean.dat")).astype(np.float32)
+
+    EX = np.loadtxt(os.path.join(resolved_dir, "E", "EX_79.dat")).astype(np.float32)
+    EY = np.loadtxt(os.path.join(resolved_dir, "E", "EY_79.dat")).astype(np.float32)
+    EZ = np.loadtxt(os.path.join(resolved_dir, "E", "EZ_79.dat")).astype(np.float32)
+
+    faces = np.loadtxt(os.path.join(resolved_dir, "tl.dat"), dtype=np.int32) - 1
+    faces = faces.astype(np.int32)
+
+    mean = np.column_stack((X0, Y0, Z0))
+
+    return {
+        "path": resolved_dir,
+        "mean": mean,
+        "EX": EX,
+        "EY": EY,
+        "EZ": EZ,
+        "faces": faces,
+    }
+
+
+def _load_bfm_assets(
+    model_dir: Optional[str] = None,
+    extra_roots: Optional[Sequence[str]] = None,
+) -> Tuple[dict, str]:
+    resolved = _resolve_bfm_model_dir(model_dir, extra_roots)
+    return _load_bfm_assets_cached(resolved), resolved
+
+
+def _ensure_radians(vals: Sequence[float]) -> np.ndarray:
+    arr = np.asarray(list(vals), dtype=float)
+    if arr.size == 0:
+        return arr
+    finite = arr[np.isfinite(arr)]
+    if finite.size > 0 and np.max(np.abs(finite)) > np.pi * 1.25:
+        arr = np.deg2rad(arr)
+    return arr
+
+
+def _b64_encode_array(arr: np.ndarray, dtype: np.dtype) -> str:
+    flat = np.asarray(arr, dtype=dtype).ravel(order="C")
+    return base64.b64encode(flat.tobytes()).decode("ascii")
+
+
+def _compress_faces(faces: np.ndarray, vertex_count: int) -> Tuple[np.ndarray, np.ndarray]:
+    faces = np.asarray(faces, dtype=np.int32)
+    if faces.size == 0:
+        subset = np.arange(vertex_count, dtype=np.int32)
+        return subset, faces
+    subset = np.unique(faces.reshape(-1)).astype(np.int32)
+    mapping = -np.ones(vertex_count, dtype=np.int32)
+    mapping[subset] = np.arange(subset.size, dtype=np.int32)
+    faces_subset = mapping[faces]
+    return subset, faces_subset
+
+
 def select_diverse_frames_maxmin(
     pose_df: pd.DataFrame,
     k: int,
@@ -180,20 +406,28 @@ def select_diverse_frames_maxmin(
 
     selected = [seed]
     dists = np.linalg.norm(z - z[seed], axis=1)
+    dists[seed] = -np.inf
 
     # greedy add
-    for _ in range(1, k):
+    for _ in range(1, min(k, n)):
         nxt = int(np.argmax(dists))
-        if dists[nxt] == 0 and random_fallback:
-            # degenerate duplicates case
-            unselected = np.setdiff1d(np.arange(n), np.array(selected))
-            if len(unselected) == 0:
+        if not np.isfinite(dists[nxt]) or (dists[nxt] == 0 and not random_fallback):
+            # all remaining distances are zero; pick the first unused index
+            unused = np.setdiff1d(np.arange(n), np.array(selected), assume_unique=True)
+            if unused.size == 0:
                 break
-            nxt = int(np.random.choice(unselected))
+            nxt = int(unused[0])
+        elif dists[nxt] == 0 and random_fallback:
+            unused = np.setdiff1d(np.arange(n), np.array(selected), assume_unique=True)
+            if unused.size == 0:
+                break
+            nxt = int(np.random.choice(unused))
         selected.append(nxt)
         dists = np.minimum(dists, np.linalg.norm(z - z[nxt], axis=1))
+        dists[selected[-1]] = -np.inf
 
-    return np.array(sorted(selected), dtype=int)
+    selected = sorted(dict.fromkeys(selected))
+    return np.array(selected, dtype=int)
 
 
 def euler_to_rotmat(rx: float, ry: float, rz: float) -> np.ndarray:
@@ -945,7 +1179,12 @@ def visualize_and_export_can_land(
         autosize=False,
         width=fig_w, height=fig_h,
         showlegend=False,
-        title={"text": "Video (top) and Canonicalized Landmarks (bottom)", "x": 0.5, "xanchor": "center"},
+        title={
+            "text": "<b>Video (top) and Canonicalized Landmarks (bottom)</b>",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"size": 22},
+        },
         margin=dict(t=70, l=20, r=20, b=120),
         font=dict(family="Roboto, sans-serif", size=14, color="#111"),
         paper_bgcolor="white",
@@ -1543,7 +1782,12 @@ def visualize_and_export_pose(
         autosize=False,
         width=fig_w, height=fig_h,
         showlegend=False,
-        title={"text": title_text, "x": 0.5, "xanchor": "center"},
+        title={
+            "text": f"<b>{title_text}</b>",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"size": 22},
+        },
         margin=dict(t=80, l=30, r=30, b=120),
         font=dict(family="Roboto, sans-serif", size=14, color="#111"),
         paper_bgcolor="white",
@@ -1860,49 +2104,27 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>$export_filename_safe</title>
   <style>
-    body {
-    margin: 0;
-    background: #ffffff;
-    font-family: 'Roboto', sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    }
-    .toolbar {
-      margin: 12px 0 18px; /* moved below figure: add top margin */
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-    }
-    .btn {
-      padding: 6px 12px;
-      border-radius: 6px;
-      border: 2px solid #2ecc71; /* updated in JS */
-      background: #f8f8f8;
-      color: #222;
-      cursor: pointer;
-      user-select: none;
-      transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
-    }
-    .btn:hover { background: #eee; }
-    .btn.export { border-color: #555; }
-    .wrapper {
-      width: 100%;
-      display: flex;
-      justify-content: center; /* center horizontally */
-    }
-                             
-    .frame-counter {
-    margin-top: 6px;
-    font: 13px/1.4 monospace;
-    color: #333;
-    text-align: center;
-    }
-    #plot {
-      max-width: 95vw;
-    }
+    body{margin:0;padding:24px 18px 48px;background:#fff;font-family:'Roboto',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;}
+  h2{margin:0 0 18px;font-size:22px;font-weight:700;text-align:center;}
+    #plot{width:100%;max-width:1180px;height:auto;margin:0 auto;}
+    #loadingStatus{margin:12px auto 20px;max-width:960px;font:13px/1.6 monospace;color:#2c3e50;text-align:center;}
+    .controls{max-width:960px;margin:14px auto 6px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+    .ctrl-btn{padding:6px 16px;border-radius:10px;border:2px solid #2ecc71;background:#fff;color:#1b1b1b;cursor:pointer;font-weight:600;font-size:14px;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease;}
+    .ctrl-btn:hover{background:#eafff4;}
+    .ctrl-btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(46,204,113,0.35);}
+    .ctrl-btn.active{background:#2ecc71;color:#fff;box-shadow:0 4px 10px rgba(46,204,113,0.25);}
+    .ctrl-btn:disabled{cursor:not-allowed;opacity:0.45;background:#f3f5f3;color:#6c7aa9;border-color:#a4e8c9;box-shadow:none;}
+    .frame-counter{margin:10px auto 8px;font-size:15px;font-weight:600;color:#111;text-align:center;}
+    #frameSlider{width:100%;max-width:640px;display:block;margin:8px auto 18px;-webkit-appearance:none;height:10px;border-radius:999px;outline:none;background:linear-gradient(to right,#2ecc71 var(--progress,0%),#e0e0e0 var(--progress,0%));transition:background .2s ease;}
+    #frameSlider::-webkit-slider-runnable-track{height:10px;border-radius:999px;background:transparent;}
+    #frameSlider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#2ecc71;border:2px solid #fff;box-shadow:0 0 0 3px rgba(46,204,113,0.35);cursor:pointer;margin-top:-4px;transition:transform .15s ease;}
+    #frameSlider::-webkit-slider-thumb:active{transform:scale(1.05);}
+    #frameSlider::-moz-range-track{height:10px;border-radius:999px;background:#e0e0e0;}
+    #frameSlider::-moz-range-progress{height:10px;border-radius:999px;background:#2ecc71;}
+    #frameSlider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#2ecc71;border:2px solid #fff;box-shadow:0 0 0 3px rgba(46,204,113,0.35);cursor:pointer;transition:transform .15s ease;}
+    #frameSlider::-moz-range-thumb:active{transform:scale(1.05);}
+    .meta-readout{max-width:960px;margin:12px auto 0;padding:12px 16px;border-radius:6px;background:#f5f7ff;border:1px solid #d6def8;font-size:13px;line-height:1.8;}
+    .meta-readout span{font-weight:600;color:#1f3c88;}
   </style>
 </head>
 <body>
@@ -1919,8 +2141,7 @@ def write_centered_html(fig: go.Figure, out_path: str, export_filename: str = "f
       const imageIdxs = $image_indices_json;
 
       const gd = document.getElementById('plot');
-      const exportBtn = document.getElementById('exportBtn');
-      const landmarksBtn = document.getElementById('landmarksBtn');
+            const landmarksBtn = document.getElementById('landmarksBtn');
       const rectanglesBtn = document.getElementById('rectanglesBtn');
       const blurBtn = document.getElementById('blurBtn');
       const removeBtn = document.getElementById('removeBtn');
@@ -2285,7 +2506,7 @@ def visualize_expressions_3d(
     expressions,
     out_dir: str = "bitbox_viz.html",
     title: str = "Expressions over Time (3D)",
-    video_path: Optional[str] = None,   # if provided -> use write_video_overlay_html
+    video_path: Optional[str] = None,  
     smooth: int = 0,
     downsample: int = 1,
     play_fps: int = 5,
@@ -2461,7 +2682,7 @@ def visualize_expressions_3d(
         camera=dict(eye=dict(x=1.75, y=-1.25, z=0.35), up=dict(x=0, y=0, z=1)),
     )
     fig.update_layout(
-        title=dict(text=title, x=0.5),
+        title=dict(text=f"<b>{title}</b>", x=0.5, font=dict(size=22)),
         font={"family": "Roboto, sans-serif", "size": 14, "color": "#111"},
         height=700,
         margin=dict(t=40, l=30, r=30, b=60),
@@ -2475,6 +2696,7 @@ def visualize_expressions_3d(
         '<button id="prevBtn" class="btn">&#8592; Prev</button>'
         '<button id="playBtn" class="btn">Play</button>'
         '<button id="nextBtn" class="btn">Next &#8594;</button>'
+        '<button id="exportBtn" class="btn export">Export Video</button>'
     )
     html_template = Template(r"""<!doctype html>
 <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>$title</title>
@@ -2541,6 +2763,1300 @@ def visualize_expressions_3d(
         f.write(html)
 
     return fig
+
+
+def visualize_bfm_expression_pose(
+    expressions,
+    pose,
+    out_dir: str,
+    num_frames: int = 48,
+    frames: Optional[Sequence[int]] = None,
+    search_paths: Optional[Sequence[str]] = None,
+    processor: Optional[object] = None,
+    identity_shape: Optional[np.ndarray] = None,
+    vertex_texture: Optional[np.ndarray] = None,
+    illumination: Optional[np.ndarray] = None,
+    title: str = "3D Render Facial Expressions & Pose",
+) -> str:
+    """
+    Render the BFMmm-19830 mean face with expression-only, pose-only and combined
+    deformations for a handful of frames, saving a Plotly HTML bundle alongside
+    the other Bitbox visualization helpers.
+
+    Parameters
+    ----------
+    expressions : pd.DataFrame or {'data': DataFrame}
+        Global expression coefficients (79 dims, columns GE0..GE78).
+    pose : pd.DataFrame or {'data': DataFrame}
+        Pose parameters containing Tx/Ty/Tz (optional) and Rx/Ry/Rz (required).
+    out_dir : str
+        Directory in which to write ``bitbox_viz.html`` (or explicit .html path).
+    num_frames : int
+        Number of diverse frames to display when `frames` is not provided.
+    frames : sequence of int, optional
+        Explicit frame indices to visualise (must exist in both sources).
+    search_paths : sequence of str, optional
+        Additional directories to probe when locating BFM assets (e.g. mounted docker paths).
+    processor : object, optional
+        FaceProcessor-like object; if provided, its `runtime`/`execDIR` (and similar) fields
+        are added to the search path hints automatically.
+    identity_shape : ndarray, optional
+        Pre-computed neutral mesh (N×3). When provided it replaces the BFM mean for the
+        "identity" baseline.
+    vertex_texture : ndarray, optional
+        Per-vertex texture values (length N or N×3). Used to colour the meshes.
+    illumination : ndarray, optional
+        Per-frame illumination coefficients. When texture data is present the first
+        three channels are used to modulate brightness across frames.
+    title : str
+        Figure title shown in the HTML.
+    """
+
+    def _as_df(obj, name: str) -> pd.DataFrame:
+        if isinstance(obj, pd.DataFrame):
+            return obj.copy()
+        if isinstance(obj, dict) and isinstance(obj.get("data"), pd.DataFrame):
+            return obj["data"].copy()
+        raise ValueError(f"{name} must be a pandas DataFrame or a dict with a 'data' DataFrame.")
+
+    expressions_df = _as_df(expressions, "expressions")
+    pose_df = _as_df(pose, "pose")
+    if expressions_df.empty:
+        raise ValueError("Expressions table is empty.")
+    if pose_df.empty:
+        raise ValueError("Pose table is empty.")
+
+    extra_roots: List[str] = []
+
+    if processor is not None:
+        def _append_root(value: Optional[str]) -> None:
+            if isinstance(value, str):
+                candidate = value.strip()
+                if candidate and candidate not in extra_roots:
+                    extra_roots.append(candidate)
+
+        runtime_hint = getattr(processor, "runtime", None)
+        exec_dir_hint = getattr(processor, "execDIR", None) or getattr(processor, "exec_dir", None)
+
+        runtime_kind = detect_container_type(runtime_hint) if isinstance(runtime_hint, str) else None
+        if runtime_kind == "docker":
+            exec_dir_path = exec_dir_hint if exec_dir_hint and os.path.exists(exec_dir_hint) else None
+            if exec_dir_path:
+                _append_root(exec_dir_path)
+            else:
+                docker_assets = _ensure_docker_bfm_assets(runtime_hint, exec_dir_hint)
+                _append_root(docker_assets)
+        else:
+            _append_root(runtime_hint)
+
+        for attr in ("execDIR", "exec_dir"):
+            _append_root(getattr(processor, attr, None))
+
+    if search_paths:
+        for path in search_paths:
+            if isinstance(path, str) and path and path not in extra_roots:
+                extra_roots.append(path)
+
+    extra_roots = [
+        os.path.abspath(os.path.expanduser(p))
+        for p in extra_roots
+        if isinstance(p, str) and p.strip()
+    ]
+
+    assets, model_path = _load_bfm_assets(extra_roots=extra_roots or None)
+    mean_vertices = assets["mean"]
+    EX, EY, EZ = assets["EX"], assets["EY"], assets["EZ"]
+    faces = assets["faces"]
+
+    identity_vertices: Optional[np.ndarray] = None
+    if identity_shape is not None:
+        try:
+            identity_arr = np.asarray(identity_shape, dtype=np.float32).reshape(-1, 3)
+            if identity_arr.shape[0] == mean_vertices.shape[0]:
+                identity_vertices = identity_arr
+        except Exception:
+            identity_vertices = None
+
+    base_texture_array: Optional[np.ndarray] = None
+    texture_kind: Optional[str] = None
+    if vertex_texture is not None:
+        try:
+            vt = np.asarray(vertex_texture, dtype=np.float32)
+            if vt.ndim == 1 and vt.shape[0] == mean_vertices.shape[0]:
+                base_texture_array = vt.reshape(-1, 1)
+                texture_kind = "gray"
+            elif vt.ndim == 2 and vt.shape[0] == mean_vertices.shape[0]:
+                if vt.shape[1] >= 3:
+                    base_texture_array = vt[:, :3]
+                    texture_kind = "rgb"
+        except Exception:
+            base_texture_array = None
+            texture_kind = None
+
+    illumination_array: Optional[np.ndarray] = None
+    if illumination is not None:
+        try:
+            illum_arr = np.asarray(illumination, dtype=np.float32)
+            if illum_arr.ndim == 2 and illum_arr.shape[0] > 0:
+                illumination_array = illum_arr
+        except Exception:
+            illumination_array = None
+
+    # Resolve HTML output path early so chunk files can be written alongside it.
+    if out_dir.lower().endswith(".html"):
+        html_path = out_dir
+        html_dir = os.path.dirname(html_path) or "."
+        os.makedirs(html_dir, exist_ok=True)
+    else:
+        html_dir = out_dir or "."
+        os.makedirs(html_dir, exist_ok=True)
+        html_path = os.path.join(html_dir, "bitbox_viz.html")
+
+    # Clean up any previous frame chunk files so stale data is not served.
+    try:
+        for chunk_file in Path(html_dir).glob("bfm_frames_chunk_*.js"):
+            chunk_file.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    orientation_matrix = np.array([
+        [1.0, 0.0, 0.0],   # preserve X (width)
+        [0.0, 0.0, 1.0],   # map depth (Z) to Plotly Y
+        [0.0, -1.0, 0.0],  # map vertical (Y) to Plotly Z mirrored across XY plane
+    ], dtype=np.float32)
+    orientation_matrix_T = np.ascontiguousarray(orientation_matrix.T, dtype=np.float32)
+
+    def _orient_vertices(arr: np.ndarray) -> np.ndarray:
+        """Re-map BFM axes to Plotly's (x, y, z) convention."""
+        return np.asarray(arr, dtype=np.float32) @ orientation_matrix.T
+
+    def _align_to_reference(vertices: np.ndarray, reference: np.ndarray) -> np.ndarray:
+        """Remove rigid rotation by aligning vertices to the reference orientation."""
+        src = np.asarray(vertices, dtype=np.float32)
+        ref = np.asarray(reference, dtype=np.float32)
+        if src.shape != ref.shape or src.size == 0:
+            return src
+        src_center = src.mean(axis=0, keepdims=True)
+        ref_center = ref.mean(axis=0, keepdims=True)
+        src_centered = src - src_center
+        ref_centered = ref - ref_center
+        cov = src_centered.T @ ref_centered
+        try:
+            U, _, Vt = np.linalg.svd(cov)
+        except np.linalg.LinAlgError:
+            return src
+        R = Vt.T @ U.T
+        if np.linalg.det(R) < 0:
+            Vt[-1, :] *= -1
+            R = Vt.T @ U.T
+        aligned = src_centered @ R + ref_center
+        return aligned
+
+    def _encode_uint8_array(axis: np.ndarray, level: int = 1) -> str:
+        arr = np.ascontiguousarray(axis, dtype=np.uint8)
+        compressed = zlib.compress(arr.tobytes(), level)
+        return base64.b64encode(compressed).decode("ascii")
+
+    def _encode_uint16_array(axis: np.ndarray, level: int = 1) -> str:
+        arr = np.ascontiguousarray(axis, dtype=np.uint16)
+        compressed = zlib.compress(arr.tobytes(), level)
+        return base64.b64encode(compressed).decode("ascii")
+
+    def _encode_mesh_axes(arr: np.ndarray, axis_ranges: Sequence[Sequence[float]], bits: int = 8) -> dict:
+        arr = np.asarray(arr, dtype=np.float32, order="C")
+        encoded = {}
+        axis_labels = ("x", "y", "z")
+        levels = (1 << bits) - 1
+        for idx, label in enumerate(axis_labels):
+            axis_min, axis_max = map(float, axis_ranges[idx])
+            span = axis_max - axis_min
+            if not np.isfinite(span) or span <= 0.0:
+                span = 1.0
+            normalized = (arr[:, idx] - axis_min) / span
+            normalized = np.nan_to_num(normalized, nan=0.0, posinf=1.0, neginf=0.0)
+            scaled = normalized * levels
+            quantized = np.clip(np.rint(scaled), 0.0, levels)
+            if bits <= 8:
+                encoded[label] = _encode_uint8_array(quantized.astype(np.uint8))
+            else:
+                encoded[label] = _encode_uint16_array(quantized.astype(np.uint16))
+        return encoded
+
+    expected_expressions = EX.shape[1]
+
+    def _col_order(label: str) -> Tuple[int, str]:
+        digits = "".join(ch for ch in label if ch.isdigit())
+        return (int(digits) if digits else 0, label)
+
+    expr_cols = [c for c in expressions_df.columns if str(c).lower().startswith("ge")]
+    expr_cols = [_col_order(str(c)) for c in expr_cols]
+    expr_cols_sorted = [c for _, c in sorted(expr_cols, key=lambda x: x[0])]
+    if len(expr_cols_sorted) != expected_expressions:
+        numeric_cols = [c for c in expressions_df.columns if np.issubdtype(expressions_df[c].dtype, np.number)]
+        if len(numeric_cols) >= expected_expressions:
+            expr_cols_sorted = numeric_cols[:expected_expressions]
+        else:
+            raise ValueError(f"Expressions must provide {expected_expressions} coefficients (GE0..GE78).")
+
+    rx_col = _find_col(pose_df, ("Rx", "rx", "pitch"))
+    ry_col = _find_col(pose_df, ("Ry", "ry", "yaw"))
+    rz_col = _find_col(pose_df, ("Rz", "rz", "roll"))
+    if not all([rx_col, ry_col, rz_col]):
+        raise KeyError("Pose data must contain Rx/Ry/Rz (or pitch/yaw/roll) columns.")
+
+    tx_col = _find_col(pose_df, ("Tx", "tx"))
+    ty_col = _find_col(pose_df, ("Ty", "ty"))
+    tz_col = _find_col(pose_df, ("Tz", "tz"))
+
+    def _coerce_index(index: pd.Index) -> List[int]:
+        payload: List[int] = []
+        for v in index:
+            try:
+                payload.append(int(v))
+            except Exception as exc:
+                raise ValueError(f"Frame index '{v}' is not integer-like.") from exc
+        return payload
+
+    expr_index = _coerce_index(expressions_df.index)
+    pose_index = _coerce_index(pose_df.index)
+    common_frames = sorted(set(expr_index) & set(pose_index))
+    if not common_frames:
+        raise ValueError("Expressions and pose tables have no overlapping frame indices.")
+
+    auto_selected_frames = False
+
+    if frames:
+        provided = []
+        index_set = set(common_frames)
+        for f in frames:
+            try:
+                fi = int(f)
+            except Exception:
+                continue
+            if fi in index_set:
+                provided.append(fi)
+        frame_ids = provided
+    else:
+        frame_ids = []
+        auto_selected_frames = True
+
+    if not frame_ids:
+        k = max(1, min(int(num_frames), len(common_frames)))
+        pose_subset = pose_df.loc[common_frames]
+        try:
+            sel = select_diverse_frames_maxmin(pose_subset, k=k)
+            frame_ids = [int(pose_subset.index[i]) for i in sel]
+        except Exception:
+            frame_ids = common_frames[:k]
+
+    if not frame_ids:
+        raise ValueError("No frames available after selection.")
+
+    frame_ids = sorted(dict.fromkeys(int(f) for f in frame_ids))
+
+    if auto_selected_frames and frame_ids:
+        frame_cap = max(1, int(num_frames))
+        if len(frame_ids) > frame_cap:
+            original_ids = frame_ids
+            original_count = len(original_ids)
+            indices = np.linspace(0, original_count - 1, num=frame_cap, dtype=int)
+            frame_ids = [original_ids[i] for i in indices]
+            # Removed logging of auto-selection to streamline output.
+
+    column_labels = ("Expression Only", "Pose Only", "Expression + Pose")
+    column_colors = ("#FFE388", "#8DC6FF", "#7EE6A7")
+
+    horizontal_spacing = 0.04
+    specs = [[{"type": "scene"}] * 3]
+    fig = make_subplots(
+        rows=1,
+        cols=3,
+        specs=specs,
+        subplot_titles=column_labels,
+        horizontal_spacing=horizontal_spacing,
+        vertical_spacing=0.0,
+    )
+
+    mesh_kwargs = dict(
+        lighting=dict(ambient=0.45, diffuse=0.6, specular=0.35, roughness=0.85, fresnel=0.2),
+        lightposition=dict(x=0.0, y=0.0, z=1.8),
+        flatshading=False,
+        showscale=False,
+    )
+
+    def _scene_name(idx: int) -> str:
+        return "scene" if idx == 0 else f"scene{idx + 1}"
+
+    expressions_sel = expressions_df.loc[frame_ids, expr_cols_sorted]
+    pose_sel = pose_df.loc[frame_ids]
+    total_frames = len(frame_ids)
+
+    subset_indices, faces_subset = _compress_faces(faces, mean_vertices.shape[0])
+    subset_indices = subset_indices.astype(np.int32)
+    faces_subset = faces_subset.astype(np.int32)
+
+    subset_mean = np.ascontiguousarray(mean_vertices[subset_indices], dtype=np.float32)
+    subset_EX = np.ascontiguousarray(EX[subset_indices, :], dtype=np.float32)
+    subset_EY = np.ascontiguousarray(EY[subset_indices, :], dtype=np.float32)
+    subset_EZ = np.ascontiguousarray(EZ[subset_indices, :], dtype=np.float32)
+
+    base_subset = subset_mean
+    if identity_vertices is not None and identity_vertices.shape[0] == mean_vertices.shape[0]:
+        try:
+            base_subset = np.ascontiguousarray(identity_vertices[subset_indices], dtype=np.float32)
+        except Exception:
+            base_subset = subset_mean
+
+    vertex_texture_subset: Optional[np.ndarray] = None
+    if base_texture_array is not None and base_texture_array.shape[0] == mean_vertices.shape[0]:
+        try:
+            vt_subset = base_texture_array[subset_indices]
+            vt_subset = np.nan_to_num(vt_subset, nan=0.0, posinf=1.0, neginf=0.0)
+            if vt_subset.ndim == 2 and vt_subset.shape[1] == 1:
+                vt_subset = vt_subset[:, 0]
+            if vt_subset.ndim == 1:
+                vt_min = float(np.min(vt_subset))
+                vt_ptp = float(np.max(vt_subset) - vt_min)
+                if vt_ptp < 1e-8:
+                    vt_ptp = 1.0
+                vertex_texture_subset = ((vt_subset - vt_min) / vt_ptp).astype(np.float32)
+                texture_kind = "gray"
+            elif vt_subset.ndim == 2 and vt_subset.shape[1] >= 3:
+                vt_min = vt_subset.min(axis=0)
+                vt_ptp = vt_subset.max(axis=0) - vt_min
+                vt_ptp[vt_ptp < 1e-8] = 1.0
+                vertex_texture_subset = ((vt_subset - vt_min) / vt_ptp)[:, :3].astype(np.float32)
+                texture_kind = "rgb"
+        except Exception:
+            vertex_texture_subset = None
+            texture_kind = None
+
+    subset_EX_T = np.ascontiguousarray(subset_EX.T)
+    subset_EY_T = np.ascontiguousarray(subset_EY.T)
+    subset_EZ_T = np.ascontiguousarray(subset_EZ.T)
+
+    expr_matrix = expressions_sel.to_numpy(dtype=np.float32, copy=True)
+    pose_rx = _ensure_radians(pose_sel[rx_col]).astype(np.float32, copy=False)
+    pose_ry = _ensure_radians(pose_sel[ry_col]).astype(np.float32, copy=False)
+    pose_rz = _ensure_radians(pose_sel[rz_col]).astype(np.float32, copy=False)
+    pose_tx = pose_sel[tx_col].to_numpy(dtype=np.float32, copy=True) if tx_col else np.zeros(total_frames, dtype=np.float32)
+    pose_ty = pose_sel[ty_col].to_numpy(dtype=np.float32, copy=True) if ty_col else np.zeros(total_frames, dtype=np.float32)
+    pose_tz = pose_sel[tz_col].to_numpy(dtype=np.float32, copy=True) if tz_col else np.zeros(total_frames, dtype=np.float32)
+
+    cx, sx = np.cos(pose_rx), np.sin(pose_rx)
+    cy, sy = np.cos(pose_ry), np.sin(pose_ry)
+    cz, sz = np.cos(pose_rz), np.sin(pose_rz)
+
+    rot_mats = np.empty((total_frames, 3, 3), dtype=np.float32)
+    rot_mats[:, 0, 0] = cy * cz
+    rot_mats[:, 0, 1] = -cy * sz
+    rot_mats[:, 0, 2] = sy
+    rot_mats[:, 1, 0] = cx * sz + sx * sy * cz
+    rot_mats[:, 1, 1] = cx * cz - sx * sy * sz
+    rot_mats[:, 1, 2] = -sx * cy
+    rot_mats[:, 2, 0] = sx * sz - cx * sy * cz
+    rot_mats[:, 2, 1] = sx * cz + cx * sy * sz
+    rot_mats[:, 2, 2] = cx * cy
+
+    pitch_deg_all = np.rad2deg(pose_rx).astype(np.float32, copy=False)
+    yaw_deg_all = np.rad2deg(pose_ry).astype(np.float32, copy=False)
+    roll_deg_all = np.rad2deg(pose_rz).astype(np.float32, copy=False)
+    row_meta = [
+        {
+            "frame": int(fid),
+            "pitch_deg": float(pitch),
+            "yaw_deg": float(yaw),
+            "roll_deg": float(roll),
+            "translation": [float(tx), float(ty), float(tz)],
+        }
+        for fid, pitch, yaw, roll, tx, ty, tz in zip(
+            frame_ids, pitch_deg_all, yaw_deg_all, roll_deg_all, pose_tx, pose_ty, pose_tz
+        )
+    ]
+
+    illumination_scales: List[float] = []
+    use_illumination = vertex_texture_subset is not None and illumination_array is not None
+    illum_norm = 1.0
+    valid_illum_cols = 0
+    if use_illumination and illumination_array is not None:
+        valid_illum_cols = min(3, illumination_array.shape[1])
+        if valid_illum_cols <= 0:
+            use_illumination = False
+        else:
+            denom = float(np.max(np.abs(illumination_array[:, :valid_illum_cols])))
+            illum_norm = denom if denom > 1e-8 else 1.0
+            base_vals = np.mean(np.abs(illumination_array[:, :valid_illum_cols]), axis=1)
+            base_vals = np.nan_to_num(base_vals, nan=0.0, posinf=0.0, neginf=0.0)
+            illumination_scales = np.clip(
+                base_vals / max(illum_norm, 1e-8), 0.1, 3.0
+            ).astype(float).tolist()
+
+    def _build_oriented_batch(start: int, end: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        coeffs = expr_matrix[start:end]  # (B, G)
+        if coeffs.size == 0:
+            empty = np.empty((0, base_subset.shape[0], 3), dtype=np.float32)
+            return empty, empty.copy(), empty.copy()
+
+        delta_x = coeffs @ subset_EX_T  # (B, V)
+        delta_y = coeffs @ subset_EY_T
+        delta_z = coeffs @ subset_EZ_T
+
+        expr_subset = np.empty((coeffs.shape[0], base_subset.shape[0], 3), dtype=np.float32)
+        expr_subset[..., 0] = delta_x + base_subset[:, 0]
+        expr_subset[..., 1] = delta_y + base_subset[:, 1]
+        expr_subset[..., 2] = delta_z + base_subset[:, 2]
+
+        rot_chunk = rot_mats[start:end]
+        rot_chunk_oriented = np.matmul(rot_chunk, orientation_matrix_T)
+        expr_oriented = np.matmul(expr_subset, orientation_matrix_T)
+        pose_oriented = np.matmul(base_subset[None, :, :], rot_chunk_oriented)
+        combined_oriented = np.matmul(expr_subset, rot_chunk_oriented)
+
+        return expr_oriented, pose_oriented, combined_oriented
+
+    min_vals = np.full(3, np.inf, dtype=np.float64)
+    max_vals = np.full(3, -np.inf, dtype=np.float64)
+
+    batch_size = max(1, min(256, total_frames))
+    for start in range(0, total_frames, batch_size):
+        end = min(total_frames, start + batch_size)
+        expr_oriented, pose_oriented, combined_oriented = _build_oriented_batch(start, end)
+
+        expr_min = np.nanmin(expr_oriented.reshape(-1, 3), axis=0)
+        pose_min = np.nanmin(pose_oriented.reshape(-1, 3), axis=0)
+        combined_min = np.nanmin(combined_oriented.reshape(-1, 3), axis=0)
+        expr_max = np.nanmax(expr_oriented.reshape(-1, 3), axis=0)
+        pose_max = np.nanmax(pose_oriented.reshape(-1, 3), axis=0)
+        combined_max = np.nanmax(combined_oriented.reshape(-1, 3), axis=0)
+
+        batch_min = np.minimum(expr_min, np.minimum(pose_min, combined_min))
+        batch_max = np.maximum(expr_max, np.maximum(pose_max, combined_max))
+        min_vals = np.minimum(min_vals, batch_min)
+        max_vals = np.maximum(max_vals, batch_max)
+
+    if not np.isfinite(min_vals).any() or not np.isfinite(max_vals).any():
+        raise ValueError("No geometry generated; check inputs.")
+
+    center = (max_vals + min_vals) / 2.0
+
+    if not np.isfinite(min_vals).any() or not np.isfinite(max_vals).any():
+        raise ValueError("No geometry generated; check inputs.")
+
+    center = (max_vals + min_vals) / 2.0
+    radius = float(np.max((max_vals - min_vals) / 2.0))
+    if not np.isfinite(radius) or radius <= 0:
+        radius = 1.0
+    radius *= 1.05
+    ranges = [
+        [center[0] - radius, center[0] + radius],
+        [center[1] - radius, center[1] + radius],
+        [center[2] - radius, center[2] + radius],
+    ]
+    quant_bits = 10
+    quant_meta = [
+        {"min": float(rng[0]), "max": float(rng[1])}
+        for rng in ranges
+    ]
+
+    cam_expression = dict(eye=dict(x=0.0, y=-1.45, z=-0.05), up=dict(x=0.0, y=0.0, z=-1.0))
+    cam_pose = dict(eye=dict(x=0.0, y=-1.45, z=-0.05), up=dict(x=0.0, y=0.0, z=-1.0))
+    cam_combined = dict(eye=dict(x=0.0, y=-1.45, z=-0.05), up=dict(x=0.0, y=0.0, z=-1.0))
+
+    MAX_INLINE_FRAMES = 60
+    FRAME_CHUNK_SIZE = 120
+    use_frame_chunks = total_frames > MAX_INLINE_FRAMES
+    frame_chunk_starts: List[int] = []
+    frames_inline: List[dict] = []
+    current_chunk_start: Optional[int] = None
+    chunk_buffer: List[dict] = []
+    inline_limit = min(MAX_INLINE_FRAMES, total_frames)
+
+    chunk_writer_executor: Optional[ThreadPoolExecutor] = None
+    chunk_writer_tasks: List[Future] = []
+    if use_frame_chunks and total_frames > inline_limit:
+        cpu_count = os.cpu_count() or 1
+        half_cpus = max(1, cpu_count // 2)
+        chunk_workers = max(1, min(4, half_cpus))
+        chunk_writer_executor = ThreadPoolExecutor(max_workers=chunk_workers)
+
+    def _serialize_and_write_chunk(chunk_start: int, payload: List[dict], chunk_path: str) -> None:
+        chunk_json = json.dumps(payload, separators=(',', ':'), ensure_ascii=False)
+        with open(chunk_path, "w", encoding="utf-8") as cf:
+            cf.write("registerFrameChunk(")
+            cf.write(str(chunk_start))
+            cf.write(",")
+            cf.write(chunk_json)
+            cf.write(");")
+
+    def _flush_chunk(start: int, payload: List[dict]) -> None:
+        if not payload:
+            return
+        if start <= 0:
+            frames_inline.extend(payload)
+            return
+        frame_chunk_starts.append(start)
+        chunk_path = os.path.join(html_dir, f"bfm_frames_chunk_{start}.js")
+        chunk_payload = list(payload)
+        if chunk_writer_executor is None:
+            _serialize_and_write_chunk(start, chunk_payload, chunk_path)
+        else:
+            chunk_writer_tasks.append(
+                chunk_writer_executor.submit(_serialize_and_write_chunk, start, chunk_payload, chunk_path)
+            )
+
+    def _encode_frame_payload(args: Tuple[int, int, np.ndarray, np.ndarray, np.ndarray]) -> Tuple[int, dict]:
+        global_idx, fid, expr_arr, pose_arr, comb_arr = args
+        payload = {
+            "frame": fid,
+            "expr": _encode_mesh_axes(expr_arr, ranges, quant_bits),
+            "pose": _encode_mesh_axes(pose_arr, ranges, quant_bits),
+            "combined": _encode_mesh_axes(comb_arr, ranges, quant_bits),
+        }
+        return global_idx, payload
+
+    max_workers = 0
+    executor: Optional[ThreadPoolExecutor] = None
+    if total_frames > 200:
+        cpu_count = os.cpu_count() or 1
+        max_workers = max(2, min(8, cpu_count))
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+
+    try:
+        for start in range(0, total_frames, batch_size):
+            end = min(total_frames, start + batch_size)
+            expr_oriented, pose_oriented, combined_oriented = _build_oriented_batch(start, end)
+
+            encode_inputs = [
+                (
+                    start + local_idx,
+                    int(frame_ids[start + local_idx]),
+                    expr_oriented[local_idx],
+                    pose_oriented[local_idx],
+                    combined_oriented[local_idx],
+                )
+                for local_idx in range(end - start)
+            ]
+
+            if executor is not None:
+                encoded_iter = executor.map(_encode_frame_payload, encode_inputs)
+            else:
+                encoded_iter = map(_encode_frame_payload, encode_inputs)
+
+            for global_idx, frame_payload in encoded_iter:
+                if not use_frame_chunks or global_idx < inline_limit:
+                    frames_inline.append(frame_payload)
+                    continue
+
+                chunk_start = ((global_idx - inline_limit) // FRAME_CHUNK_SIZE) * FRAME_CHUNK_SIZE + inline_limit
+                if current_chunk_start is None:
+                    current_chunk_start = chunk_start
+                if chunk_start != current_chunk_start:
+                    _flush_chunk(current_chunk_start, chunk_buffer)
+                    chunk_buffer = []
+                    current_chunk_start = chunk_start
+                chunk_buffer.append(frame_payload)
+                if len(chunk_buffer) >= FRAME_CHUNK_SIZE or global_idx == total_frames - 1:
+                    _flush_chunk(current_chunk_start, chunk_buffer)
+                    chunk_buffer = []
+    finally:
+        if current_chunk_start is not None and chunk_buffer:
+            _flush_chunk(current_chunk_start, chunk_buffer)
+            chunk_buffer = []
+        if executor is not None:
+            executor.shutdown(wait=True)
+        if chunk_writer_executor is not None:
+            chunk_writer_executor.shutdown(wait=True)
+            for task in chunk_writer_tasks:
+                task.result()
+
+    faces_payload = {
+        "i": _encode_uint16_array(faces_subset[:, 0]),
+        "j": _encode_uint16_array(faces_subset[:, 1]),
+        "k": _encode_uint16_array(faces_subset[:, 2]),
+    }
+
+    scene_ids = [_scene_name(i) for i in range(3)]
+    for idx, scene_id in enumerate(scene_ids):
+        scene = getattr(fig.layout, scene_id)
+        scene.aspectmode = "cube"
+        if idx == 0:
+            scene.camera = cam_expression
+        elif idx == 1:
+            scene.camera = cam_pose
+        else:
+            scene.camera = cam_combined
+        scene.bgcolor = "white"
+        for axis_name, rng in zip(("xaxis", "yaxis", "zaxis"), ranges):
+            axis = getattr(scene, axis_name)
+            axis.update(
+                title="",
+                range=rng,
+                showbackground=False,
+                showgrid=False,
+                zeroline=False,
+                showticklabels=False,
+            )
+
+    fig_width = 340 * 3 + 120
+    fig_height = 420
+    fig.update_layout(
+        width=fig_width,
+        height=fig_height,
+        showlegend=False,
+        margin=dict(t=70, l=30, r=30, b=60),
+        font=dict(family="Roboto, sans-serif", size=14, color="#111"),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+    )
+
+    meta_payload = {
+        "bfm_model_dir": model_path,
+        "bfm_frames": row_meta,
+    }
+    if isinstance(vertex_texture_subset, np.ndarray):
+        meta_payload["vertex_texture"] = vertex_texture_subset.tolist()
+        meta_payload["vertex_texture_kind"] = "rgb" if vertex_texture_subset.ndim == 2 else "gray"
+        if illumination_scales:
+            meta_payload["vertex_texture_scale"] = illumination_scales
+
+    fig.update_layout(meta=meta_payload)
+
+    inline_limit = min(MAX_INLINE_FRAMES, total_frames)
+
+    def _compact_json(data, encoder=None):
+        kwargs = dict(separators=(',', ':'), ensure_ascii=False)
+        if encoder is not None:
+            kwargs["cls"] = encoder
+        return json.dumps(data, **kwargs)
+
+    layout_json = _compact_json(fig.layout, PlotlyJSONEncoder)
+    mesh_opts_json = _compact_json(mesh_kwargs, PlotlyJSONEncoder)
+    frames_json = _compact_json(frames_inline)
+    frame_chunk_starts_json = _compact_json(frame_chunk_starts)
+    use_frame_chunks_json = _compact_json(bool(use_frame_chunks))
+    frame_chunk_size_json = _compact_json(int(FRAME_CHUNK_SIZE if use_frame_chunks else 0))
+    inline_limit_json = _compact_json(int(inline_limit))
+    total_frames_json = _compact_json(int(total_frames))
+    frame_chunk_prefix = "bfm_frames_chunk_"
+    frame_chunk_prefix_json = _compact_json(frame_chunk_prefix)
+    faces_json = _compact_json(faces_payload)
+    column_labels_json = _compact_json(column_labels)
+    column_colors_json = _compact_json(column_colors)
+    row_meta_json = _compact_json(row_meta)
+    quant_meta_json = _compact_json(quant_meta)
+    quant_bits_json = _compact_json(int(quant_bits))
+    playback_fps = 24.0
+    playback_json = _compact_json({
+        "fps": max(1.0, min(60.0, playback_fps)),
+        "loop": True,
+    })
+
+    html_template = getattr(visualize_bfm_expression_pose, "_html_template", None)
+    if html_template is None:
+        html_template = Template("""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>$title</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <style>
+    body{margin:0;padding:24px 18px 48px;background:#fff;font-family:'Roboto',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;}
+    h2{margin:0 0 18px;font-size:22px;font-weight:600;text-align:center;}
+    #plot{width:100%;max-width:1180px;height:auto;margin:0 auto;}
+    #loadingStatus{margin:12px auto 20px;max-width:960px;font:13px/1.6 monospace;color:#2c3e50;text-align:center;}
+    .controls{max-width:960px;margin:14px auto 6px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;}
+    .ctrl-btn{border:1px solid #2ecc71;background:#fff;color:#111;padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;}
+    .ctrl-btn:hover{background:#2ecc71;color:#fff;}
+    .ctrl-btn:disabled{cursor:not-allowed;opacity:0.45;background:#f4f6fb;color:#6c7aa9;border-color:#96e6b5;}
+    .frame-counter{margin:10px auto 8px;font-size:15px;font-weight:600;color:#111;text-align:center;}
+    #frameSlider{width:100%;max-width:640px;display:block;margin:8px auto 18px;}
+    .meta-readout{max-width:960px;margin:12px auto 0;padding:12px 16px;border-radius:6px;background:#f5f7ff;border:1px solid #d6def8;font-size:13px;line-height:1.8;}
+    .meta-readout span{font-weight:600;color:#1f3c88;}
+  </style>
+</head>
+<body>
+  <h2><strong>$title</strong></h2>
+  <div id="plot"></div>
+  <div id="frameLabel" class="frame-counter">Frame</div>
+  <div class="controls">
+    <button id="back10Btn" class="ctrl-btn" title="Back 10 frames">-10</button>
+    <button id="back1Btn" class="ctrl-btn" title="Back 1 frame">-1</button>
+    <button id="playBtn" class="ctrl-btn" title="Play/Pause">Play</button>
+    <button id="forward1Btn" class="ctrl-btn" title="Forward 1 frame">+1</button>
+    <button id="forward10Btn" class="ctrl-btn" title="Forward 10 frames">+10</button>
+  </div>
+  <input id="frameSlider" type="range" min="0" max="0" value="0" step="1" />
+  <div id="loadingStatus">Preparing meshes…</div>
+  <div id="frameMeta" class="meta-readout">Frame metadata will appear here once the plot is ready.</div>
+  <script>
+    const layout = $layout_json;
+    const config = {responsive:true, displayModeBar:true};
+    const meshOpts = $mesh_opts_json;
+    const framesInline = $frames_json;
+    const totalFrames = $total_frames;
+    const useFrameChunks = $use_frame_chunks;
+    const frameChunkSize = $frame_chunk_size;
+    const frameChunkStarts = $frame_chunk_starts;
+    const frameChunkPrefix = $frame_chunk_prefix_json;
+    const inlineLimit = $inline_limit;
+    const quantMeta = $quant_meta_json;
+    const quantBits = $quant_bits_json;
+    const facesEncoded = $faces_json;
+    const frames = new Array(totalFrames);
+    for (let i = 0; i < framesInline.length; i++){
+      frames[i] = framesInline[i];
+    }
+    const loadedFrameChunks = new Set();
+    if (framesInline.length){
+      loadedFrameChunks.add(0);
+    }
+    const frameChunkStartSet = new Set(frameChunkStarts || []);
+    const frameChunkPromises = new Map();
+    const chunkWarmPromises = new Map();
+    const chunkWarmCount = frameChunkSize
+      ? Math.max(4, Math.min(16, Math.floor(frameChunkSize / 12))) : 8;
+    const MAX_CACHE_FRAMES = (() => {
+      const base = frameChunkSize ? frameChunkSize * 3 : 360;
+      return Math.max(90, Math.min(480, base));
+    })();
+    const cacheOrder = [];
+    const cacheSet = new Set();
+
+    const columnLabels = $column_labels_json;
+    const columnColors = $column_colors_json;
+    const rowMeta = $row_meta_json;
+    const playback = $playback_json;
+    const columnKeys = ['expr','pose','combined'];
+    const rowMetaIndex = new Map(rowMeta.map((item) => [Number(item.frame), item]));
+    const frameMetaEl = document.getElementById('frameMeta');
+    const gd = document.getElementById('plot');
+    const meta = layout.meta || {};
+    const baseTexture = meta.vertex_texture || null;
+    const textureKind = meta.vertex_texture_kind || 'gray';
+    const textureScales = Array.isArray(meta.vertex_texture_scale) ? meta.vertex_texture_scale : null;
+
+    function clamp255(v){
+      return Math.max(0, Math.min(255, Math.round(v)));
+    }
+
+    function buildVertexColors(textureArray, kind, scale){
+      if (!textureArray) return null;
+      const mix = (v) => {
+        const scaled = (v || 0) * (scale || 1);
+        const blended = Math.min(1, Math.max(0, 0.35 + 0.65 * scaled));
+        return clamp255(blended * 255);
+      };
+      if (kind === 'rgb'){
+        return textureArray.map((entry) => {
+          const rgb = Array.isArray(entry) ? entry : [entry, entry, entry];
+          const r = mix(rgb[0]);
+          const g = mix(rgb[1]);
+          const b = mix(rgb[2]);
+          return `rgb(${r},${g},${b})`;
+        });
+      }
+      return textureArray.map((value) => {
+        const gray = mix(value);
+        return `rgb(${gray},${gray},${gray})`;
+      });
+    }
+
+    const initialTextureScale = textureScales && textureScales.length ? (textureScales[0] ?? 1) : 1;
+    const baseVertexColors = baseTexture ? buildVertexColors(baseTexture, textureKind, initialTextureScale) : null;
+
+    function updateStatus(text){
+      const el = document.getElementById('loadingStatus');
+      if (el) el.textContent = text;
+    }
+
+    function createDeferred(){
+      let resolveFn, rejectFn;
+      const promise = new Promise((resolve, reject) => {
+        resolveFn = resolve;
+        rejectFn = reject;
+      });
+      return {promise, resolve: resolveFn, reject: rejectFn};
+    }
+
+    function chunkStartForIndex(idx){
+      if (!useFrameChunks || idx < inlineLimit) return 0;
+      if (!frameChunkSize || frameChunkSize <= 0) return inlineLimit;
+      const rel = idx - inlineLimit;
+      if (rel < 0) return 0;
+      return inlineLimit + Math.floor(rel / frameChunkSize) * frameChunkSize;
+    }
+
+    function registerFrameChunk(start, payload){
+      if (!Array.isArray(payload)) return;
+      for (let i = 0; i < payload.length; i++){
+        frames[start + i] = payload[i];
+      }
+      loadedFrameChunks.add(start);
+      const deferred = frameChunkPromises.get(start);
+      if (deferred){
+        deferred.resolve();
+        frameChunkPromises.delete(start);
+      }
+    }
+
+    function loadFrameChunk(start){
+      if (!useFrameChunks) return Promise.resolve();
+      if (start <= 0){
+        loadedFrameChunks.add(0);
+        return Promise.resolve();
+      }
+      if (!frameChunkStartSet.has(start)){
+        return Promise.resolve();
+      }
+      if (loadedFrameChunks.has(start)){
+        return Promise.resolve();
+      }
+      if (frameChunkPromises.has(start)){
+        return frameChunkPromises.get(start).promise;
+      }
+      const deferred = createDeferred();
+      frameChunkPromises.set(start, deferred);
+      const script = document.createElement('script');
+      script.src = `${frameChunkPrefix}${start}.js`;
+      script.async = true;
+      script.onerror = () => {
+        frameChunkPromises.delete(start);
+        deferred.reject(new Error(`Failed to load frame chunk ${start}`));
+      };
+      document.head.appendChild(script);
+      return deferred.promise;
+    }
+
+    async function ensureFrameLoaded(idx){
+      if (idx < 0 || idx >= totalFrames) return null;
+      if (!useFrameChunks){
+        return frames[idx] || null;
+      }
+      if (frames[idx]){
+        return frames[idx];
+      }
+      const start = chunkStartForIndex(idx);
+      await loadFrameChunk(start).catch(() => {});
+      warmChunk(start);
+      return frames[idx] || null;
+    }
+
+    function prefetchChunksAround(idx){
+      if (!useFrameChunks) return;
+      const seen = new Set();
+      const candidates = [
+        chunkStartForIndex(idx),
+        chunkStartForIndex(idx + frameChunkSize),
+        chunkStartForIndex(idx - frameChunkSize),
+      ];
+      for (const start of candidates){
+        if (start <= 0) continue;
+        if (!frameChunkStartSet.has(start)) continue;
+        if (seen.has(start)) continue;
+        seen.add(start);
+        if (loadedFrameChunks.has(start)){
+          warmChunk(start);
+          continue;
+        }
+        loadFrameChunk(start).then(() => warmChunk(start)).catch(() => {});
+      }
+    }
+
+    function base64ToUint8(base64){
+      const raw = atob(base64);
+      const view = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++){ view[i] = raw.charCodeAt(i); }
+      return view;
+    }
+
+    function decodeUint8(base64){
+      const inflated = pako.inflate(base64ToUint8(base64));
+      const buffer = inflated.buffer.slice(inflated.byteOffset, inflated.byteOffset + inflated.byteLength);
+      return new Uint8Array(buffer);
+    }
+
+    function decodeUint16(base64){
+      const inflated = pako.inflate(base64ToUint8(base64));
+      const buffer = inflated.buffer.slice(inflated.byteOffset, inflated.byteOffset + inflated.byteLength);
+      return new Uint16Array(buffer);
+    }
+
+    function decodeAxis(base64, axisIdx){
+      const levels = Math.max(1, Math.pow(2, quantBits) - 1);
+      const ints = quantBits <= 8 ? decodeUint8(base64) : decodeUint16(base64);
+      const meta = quantMeta[axisIdx] || {min: 0, max: 1};
+      const min = Number.isFinite(meta.min) ? meta.min : 0;
+      const max = Number.isFinite(meta.max) ? meta.max : min + 1;
+      const span = max - min || 1;
+      const out = new Float32Array(ints.length);
+      for (let i = 0; i < ints.length; i++){
+        out[i] = min + (ints[i] / levels) * span;
+      }
+      return out;
+    }
+
+    const faces = {
+      i: Array.from(decodeUint16(facesEncoded.i)),
+      j: Array.from(decodeUint16(facesEncoded.j)),
+      k: Array.from(decodeUint16(facesEncoded.k)),
+    };
+
+    const meshCache = {
+      expr: new Map(),
+      pose: new Map(),
+      combined: new Map(),
+    };
+
+    function touchCacheFrame(frameId){
+      if (!cacheSet.has(frameId)) return;
+      const idx = cacheOrder.indexOf(frameId);
+      if (idx === -1) return;
+      cacheOrder.splice(idx, 1);
+      cacheOrder.push(frameId);
+    }
+
+    function registerCacheFrame(frameId){
+      if (!cacheSet.has(frameId)){
+        cacheSet.add(frameId);
+        cacheOrder.push(frameId);
+      } else {
+        touchCacheFrame(frameId);
+      }
+      while (cacheOrder.length > MAX_CACHE_FRAMES){
+        const oldest = cacheOrder.shift();
+        if (oldest === undefined) break;
+        cacheSet.delete(oldest);
+        for (const key of columnKeys){
+          meshCache[key].delete(oldest);
+        }
+      }
+    }
+
+    function warmChunk(start){
+      if (!useFrameChunks || start <= 0) return;
+      if (!frameChunkStartSet.has(start)) return;
+      if (chunkWarmPromises.has(start)) return;
+      const promise = Promise.resolve().then(() => {
+        const available = Math.max(0, totalFrames - start);
+        if (!available) return;
+        const limit = Math.min(chunkWarmCount, available);
+        for (let offset = 0; offset < limit; offset++){
+          const frame = frames[start + offset];
+          if (!frame) continue;
+          for (const key of columnKeys){
+            const cache = meshCache[key];
+            if (cache.has(frame.frame)) continue;
+            decodeFramePayload(frame, key);
+          }
+        }
+      }).catch(() => {}).finally(() => {
+        chunkWarmPromises.delete(start);
+      });
+      chunkWarmPromises.set(start, promise);
+    }
+
+    function decodeFramePayload(frameObj, key){
+      const store = meshCache[key];
+      const frameId = frameObj.frame;
+      if (store.has(frameId)){
+        const bundle = store.get(frameId);
+        touchCacheFrame(frameId);
+        return bundle;
+      }
+      const payload = frameObj[key];
+      const bundle = {
+        x: decodeAxis(payload.x, 0),
+        y: decodeAxis(payload.y, 1),
+        z: decodeAxis(payload.z, 2),
+      };
+      store.set(frameId, bundle);
+      registerCacheFrame(frameId);
+      return bundle;
+    }
+
+    function formatNumber(value, digits){
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '—';
+      return num.toFixed(digits);
+    }
+
+    function renderMeta(frameId){
+      if (!frameMetaEl) return;
+      const meta = rowMetaIndex.get(Number(frameId));
+      if (!meta){
+        frameMetaEl.textContent = 'Metadata unavailable for this frame.';
+        return;
+      }
+      frameMetaEl.innerHTML = `
+        <span><strong>Frame: ${meta.frame}</strong></span><br>
+        <span>Pitch:</span> ${formatNumber(meta.pitch_deg, 2)}°<br>
+        <span>Yaw:</span> ${formatNumber(meta.yaw_deg, 2)}°<br>
+        <span>Roll:</span> ${formatNumber(meta.roll_deg, 2)}°
+      `;
+    }
+
+    let activeIndex = 0;
+    let playing = false;
+    let timer = null;
+    let plotReady = false;
+
+    const back10Btn = document.getElementById('back10Btn');
+    const back1Btn = document.getElementById('back1Btn');
+    const playBtn = document.getElementById('playBtn');
+    const forward1Btn = document.getElementById('forward1Btn');
+    const forward10Btn = document.getElementById('forward10Btn');
+    const frameLabel = document.getElementById('frameLabel');
+    const frameSlider = document.getElementById('frameSlider');
+
+    function buildTrace(bundle, idx){
+      const sceneId = idx === 0 ? 'scene' : 'scene' + (idx + 1);
+      const trace = {
+        type: 'mesh3d',
+        x: bundle.x,
+        y: bundle.y,
+        z: bundle.z,
+        i: faces.i,
+        j: faces.j,
+        k: faces.k,
+        name: columnLabels[idx] || columnKeys[idx],
+        color: columnColors[idx] || '#E0E0E0',
+        hoverinfo: 'skip',
+        scene: sceneId,
+        ...meshOpts,
+      };
+      if (baseVertexColors){
+        trace.vertexcolor = baseVertexColors;
+      }
+      return trace;
+    }
+
+    function setFrameLabel(idx){
+      if (!totalFrames){
+        frameLabel.textContent = 'Frame';
+        return;
+      }
+      if (!plotReady) return;
+      const frame = frames[idx];
+      if (!frame) return;
+      frameLabel.textContent = `Frame ${frame.frame} (${idx + 1}/${totalFrames})`;
+    }
+
+    async function applyFrame(idx){
+      if (!totalFrames) return;
+      idx = Math.max(0, Math.min(totalFrames - 1, idx));
+      const frame = await ensureFrameLoaded(idx);
+      if (!frame) return;
+      prefetchChunksAround(idx);
+      const colorScale = (baseTexture && textureScales && textureScales.length)
+        ? (textureScales[idx] ?? textureScales[Math.min(idx, textureScales.length - 1)] ?? 1)
+        : 1;
+      const frameVertexColors = baseTexture ? buildVertexColors(baseTexture, textureKind, colorScale) : null;
+      const updateData = columnKeys.map((key) => {
+        const bundle = decodeFramePayload(frame, key);
+        const payload = {x: bundle.x, y: bundle.y, z: bundle.z};
+        if (frameVertexColors) payload.vertexcolor = frameVertexColors;
+        return payload;
+      });
+      Plotly.animate('plot', {
+        data: updateData,
+        traces: [0, 1, 2],
+      }, {
+        transition: {duration: 0},
+        frame: {duration: 0, redraw: true},
+        mode: 'immediate',
+      });
+      activeIndex = idx;
+      frameSlider.value = String(idx);
+      setFrameLabel(idx);
+      renderMeta(frame.frame);
+    }
+
+    async function initializePlot(){
+      if (!totalFrames){
+        back10Btn.disabled = true;
+        back1Btn.disabled = true;
+        playBtn.disabled = true;
+        forward1Btn.disabled = true;
+        forward10Btn.disabled = true;
+        frameSlider.disabled = true;
+        updateStatus('No frames available.');
+        if (frameMetaEl){
+          frameMetaEl.textContent = 'No frames available.';
+        }
+        return;
+      }
+
+      const firstFrame = await ensureFrameLoaded(0);
+      if (!firstFrame){
+        back10Btn.disabled = true;
+        back1Btn.disabled = true;
+        playBtn.disabled = true;
+        forward1Btn.disabled = true;
+        forward10Btn.disabled = true;
+        frameSlider.disabled = true;
+        updateStatus('Failed to load frame data.');
+        if (frameMetaEl){
+          frameMetaEl.textContent = 'Frame data unavailable.';
+        }
+        return;
+      }
+
+      const initialBundles = columnKeys.map((key) => decodeFramePayload(firstFrame, key));
+      const traces = initialBundles.map((bundle, idx) => buildTrace(bundle, idx));
+
+      Plotly.newPlot('plot', traces, layout, config).then(() => {
+        const multi = totalFrames > 1;
+        back10Btn.disabled = !multi;
+        back1Btn.disabled = !multi;
+        playBtn.disabled = !multi;
+        forward1Btn.disabled = !multi;
+        forward10Btn.disabled = !multi;
+        frameSlider.disabled = !multi;
+        frameSlider.max = totalFrames ? totalFrames - 1 : 0;
+        frameSlider.value = '0';
+        setFrameLabel(0);
+        renderMeta(firstFrame.frame);
+        plotReady = true;
+        updateStatus('');
+        prefetchChunksAround(0);
+      });
+    }
+
+    initializePlot();
+
+    back10Btn.addEventListener('click', () => {
+      stop();
+      step(-10);
+    });
+
+    back1Btn.addEventListener('click', () => {
+      stop();
+      step(-1);
+    });
+
+    forward1Btn.addEventListener('click', () => {
+      stop();
+      step(1);
+    });
+
+    forward10Btn.addEventListener('click', () => {
+      stop();
+      step(10);
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (playing){
+        stop();
+      } else {
+        play();
+      }
+    });
+
+    frameSlider.addEventListener('input', (event) => {
+      stop();
+      applyFrame(Number(event.target.value || 0)).catch(() => {});
+    });
+
+    function step(delta){
+      if (!totalFrames) return;
+      const next = (activeIndex + delta + totalFrames) % totalFrames;
+      applyFrame(next).catch(() => {});
+    }
+
+    const frameDelay = Math.max(20, Math.round(1000 / Math.max(1, playback.fps || 12)));
+
+    function scheduleNext(){
+      if (!playing) return;
+      timer = window.setTimeout(() => {
+        let next = activeIndex + 1;
+        if (next >= totalFrames){
+          if (playback.loop){
+            next = 0;
+          } else {
+            stop();
+            return;
+          }
+        }
+        applyFrame(next).then(() => {
+          if (playing){
+            scheduleNext();
+          }
+        }).catch(() => {
+          if (playing){
+            scheduleNext();
+          }
+        });
+      }, frameDelay);
+    }
+
+    function play(){
+      if (playing || totalFrames <= 1 || !plotReady) return;
+      playing = true;
+      playBtn.textContent = 'Pause';
+      scheduleNext();
+    }
+
+    function stop(){
+      if (!playing) return;
+      playing = false;
+      playBtn.textContent = 'Play';
+      if (timer){
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
+      if (event.code === 'Space'){
+        event.preventDefault();
+        if (playing){
+          stop();
+        } else {
+          play();
+        }
+      } else if (event.code === 'ArrowRight'){
+        event.preventDefault();
+        stop();
+        step(1);
+      } else if (event.code === 'ArrowLeft'){
+        event.preventDefault();
+        stop();
+        step(-1);
+      }
+    });
+  </script>
+</body>
+</html>
+""")
+        setattr(visualize_bfm_expression_pose, "_html_template", html_template)
+
+    html = html_template.safe_substitute(
+        title=title,
+        layout_json=layout_json,
+        mesh_opts_json=mesh_opts_json,
+        frames_json=frames_json,
+        total_frames=total_frames_json,
+        use_frame_chunks=use_frame_chunks_json,
+        frame_chunk_size=frame_chunk_size_json,
+        frame_chunk_starts=frame_chunk_starts_json,
+        inline_limit=inline_limit_json,
+        frame_chunk_prefix_json=frame_chunk_prefix_json,
+        faces_json=faces_json,
+        column_labels_json=column_labels_json,
+        column_colors_json=column_colors_json,
+        quant_meta_json=quant_meta_json,
+        quant_bits_json=quant_bits_json,
+        row_meta_json=row_meta_json,
+        playback_json=playback_json,
+    )
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    return html_path
 
 
 def write_video_overlay_html(

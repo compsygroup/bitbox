@@ -21,7 +21,7 @@ layout:
 
 Bitbox can quantify how closely one set of signals follows a reference set of signals. This functionality is useful for measuring imitation quality in facial expressions, head movements, or body actions (coming soon).
 
-This function accepts only landmarks ([2D ](../overview/outputs.md#id-2d-face-landmarks)or [3D](../overview/outputs.md#id-3d-face-landmarks)), head pose, or facial expressions ([global](../affective-expressions/facial-expressions.md#expression-related-global-deformations) or [local](../affective-expressions/facial-expressions.md#localized-expression-units)). It computes a windowed, lagged cross-correlation between all pairs of signals.
+This function accepts landmarks ([2D ](../overview/outputs.md#id-2d-face-landmarks)or [3D](../overview/outputs.md#id-3d-face-landmarks)), head pose, or facial expressions ([global](../affective-expressions/facial-expressions.md#expression-related-global-deformations) or [local](../affective-expressions/facial-expressions.md#localized-expression-units)). It computes a windowed, lagged cross-correlation between all pairs of signals.
 
 ```python
 from bitbox.social import imitation
