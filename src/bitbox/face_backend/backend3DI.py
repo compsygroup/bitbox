@@ -1,5 +1,6 @@
 import os
 import warnings
+from importlib.metadata import version, PackageNotFoundError
 
 from .backend import FaceProcessor
 
@@ -222,6 +223,31 @@ class FaceProcessor3DI(FaceProcessor):
             return None
 
 
+    def citation(self):
+        try:
+            bb_version = version("bitbox")
+        except PackageNotFoundError:
+            bb_version = "ERROR_IN_READING_VERSION_NUMBER"
+            
+        if isinstance(self.model_camera, str):
+            camera_text = "intrinsic and extrinsic camera parameters were learned through camera calibration"
+        else:
+            camera_text = f"the camera field of view was set to {self.base_metadata['camera']} degrees"
+
+        text = f""" 
+        The dataset was processed using Bitbox [1] version {bb_version} for facial behavior analysis. Facial modeling was performed with the 3DI [2], configured with the Basel Face Model (BFM) 2009 [3]. For 3DI, {camera_text}, and the iBUG-51 landmark template [4] was used for landmark definition.
+               
+        [INCLUDE THE FOLLOWING IF YOU USED LOCAL EXPRESSION COEFFICIENTS]
+        Localized expression coefficients were computed using Facial Basis [5]. 
+
+        [1] TBN
+        [2] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2024). Inequality-Constrained 3D Morphable Face Model Fitting. IEEE Transactions on Pattern Analysis and Machine Intelligence, 46(2), 1305–1318. https://doi.org/10.1109/TPAMI.2023.3334948
+        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2099). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
+        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173–7182. https://doi.org/10.1109/CVPR42600.2020.00720
+        [5] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1–10. https://doi.org/10.1109/fg61629.2025.11099288
+        """
+        print(text)
+        
 class FaceProcessor3DIlite(FaceProcessor3DI):
     def __init__(self, *args, morphable_model='BFMmm-23660', basis_model='local_basis_FacialBasis1.0', **kwargs):
         # Run the parent class init
@@ -246,6 +272,7 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         
         # prepare metadata
         self.base_metadata['backend'] = '3DI-lite'
+        self.base_metadata['morphable_model'] = self.model_morphable
         self.base_metadata['local_bases'] = self.model_basis   
         
                 
@@ -303,3 +330,23 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
             return read_expression(self._local_file(self.file_expression_localized))
         else:
             return None
+
+
+    def citation(self):
+        try:
+            bb_version = version("bitbox")
+        except PackageNotFoundError:
+            bb_version = "ERROR_IN_READING_VERSION_NUMBER"
+            
+        text = f""" 
+        The dataset was processed using Bitbox [1] version {bb_version} for facial behavior analysis. Facial modeling was performed with the 3DI-Lite [2], configured with the Basel Face Model (BFM) 2009 [3]. The iBUG-51 landmark template [4] was used for landmark definition.
+        
+        [INCLUDE THE FOLLOWING IF YOU USED LOCAL EXPRESSION COEFFICIENTS]
+        Localized expression coefficients were computed using Facial Basis [2]. 
+
+        [1] TBN
+        [2] Sariyanidi E, Yankowitz L, Schultz RT, Herrington JD, Tunc B, Cohn J (2025). Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism. In Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG), 19, 1–10. https://doi.org/10.1109/fg61629.2025.11099288
+        [3] Paysan P, Knothe R, Amberg B, Romdhani S, Vetter T (2099). A 3D Face Model for Pose and Illumination Invariant Face Recognition. In Proceedings of the IEEE International Conference on Advanced Video and Signal based Surveillance (AVSS), 296-301. https://doi.org/10.1109/AVSS.2009.58
+        [4] Sariyanidi E, Zampella CJ, Schultz RT, Tunc B (2020). Can facial pose and expression be separated with weak perspective camera? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 7173–7182. https://doi.org/10.1109/CVPR42600.2020.00720
+        """
+        print(text)
