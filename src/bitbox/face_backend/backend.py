@@ -9,7 +9,21 @@ import io
 from typing import List, Optional, Sequence, Tuple
 from time import time
 
-from ..utilities import FileCache, generate_file_hash, select_gpu, detect_container_type, visualize_and_export, visualize_and_export_can_land, visualize_expressions_3d, visualize_and_export_pose, check_data_type
+import numpy as np
+
+from ..utilities import (
+    FileCache,
+    generate_file_hash,
+    select_gpu,
+    detect_container_type,
+    visualize_and_export,
+    visualize_and_export_can_land,
+    visualize_expressions_3d,
+    visualize_and_export_pose,
+    visualize_bfm_expression_pose,
+    check_data_type,
+)
+from .reader3DI import read_expression, read_pose
 
 class FaceProcessor:
     def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
@@ -423,15 +437,23 @@ class FaceProcessor:
 
         out_dir = os.path.join(self.output_dir, "plots")
         os.makedirs(out_dir, exist_ok=True)
-
         if not check_data_type(data, ['rectangle', 'landmark', 'landmark-can', 'expression', 'pose']):
             raise ValueError("`data` must be a dict with a 'type' key in {'rectangle','landmark','landmark-can','expression','pose'}.")
 
         # Unpack overlay when provided as list/dict
         overlay_land, overlay_rect = _parse_overlay(overlay)
 
+        start_time = time()
+        if self.verbose:
+            print("Running plot...", end='', flush=True)
+
+        def _finish(result):
+            if self.verbose:
+                print(f" (Took {time() - start_time:.2f} secs)")
+            return result
+
         if check_data_type(data, 'rectangle'):
-            return visualize_and_export(
+            return _finish(visualize_and_export(
                 rects=data,
                 num_frames=num_frames,
                 video_path=video_path,
@@ -443,11 +465,11 @@ class FaceProcessor:
                 video=video,
                 frames=frames,
                 
-            )
+            ))
 
         if check_data_type(data, 'landmark'):
             rects_src = overlay_rect if overlay_rect is not None else None
-            return visualize_and_export(
+            return _finish(visualize_and_export(
                 rects=rects_src,
                 num_frames=num_frames,
                 video_path=video_path,
@@ -458,10 +480,10 @@ class FaceProcessor:
                 pose=pose,
                 video=video,
                 frames=frames,
-            )
+            ))
         
         if check_data_type(data, 'landmark-can'):
-            return visualize_and_export_can_land(
+            return _finish(visualize_and_export_can_land(
                 num_frames=num_frames,
                 out_dir=out_dir,
                 video_path=video_path,
@@ -470,10 +492,10 @@ class FaceProcessor:
                 overlay=overlay,
                 video=video,
                 frames=frames,
-            )
+            ))
 
         if check_data_type(data, 'expression'):
-            return visualize_expressions_3d(
+            return _finish(visualize_expressions_3d(
                 expressions=data,
                 out_dir=out_dir,
                 video_path=video_path,
@@ -481,10 +503,10 @@ class FaceProcessor:
                 downsample=1,
                 play_fps=5,
                 overlay=overlay,
-            )
+            ))
 
         if check_data_type(data, 'pose'):
-            return visualize_and_export_pose(
+            return _finish(visualize_and_export_pose(
                 pose=data,
                 num_frames=num_frames,
                 video_path=video_path,
@@ -492,11 +514,148 @@ class FaceProcessor:
                 overlay=overlay,
                 video=video,
                 frames=frames,
-            )
+            ))
 
         raise ValueError(f"Unknown data type: {getattr(data, 'get', lambda *_: None)('type')!r}. Expected 'rectangle', 'landmark', 'landmark-can', 'expression', or 'pose'.")
+    
+    def render_3d(
+        self,
+        expressions: Optional[dict] = None,
+        pose: Optional[dict] = None,
+        out_dir: Optional[str] = None,
+        num_frames: int = 250,
+        frames: Optional[List[int]] = None,
+    ):
+        """
+        Generate the BFM expressions & pose visualization outside of ``plot``.
 
-                 
+        When ``expressions`` and/or ``pose`` are omitted, pre-computed files from
+        the most recent 3DI run (e.g. ``*_expression_smooth.3DI``) are used.
+        """
+
+        start_time = time()
+        if self.verbose:
+            print("Running 3d face rendering ...", end='', flush=True)
+
+        def _finish(result):
+            if self.verbose:
+                print(f" (Took {time() - start_time:.2f} secs)")
+            return result
+
+        def _normalize_payload(obj, expected_type: str) -> Optional[dict]:
+            if obj is None:
+                return None
+            try:
+                if check_data_type(obj, expected_type):
+                    return obj
+            except ValueError:
+                pass
+            if hasattr(obj, "iloc"):
+                return {"type": expected_type, "data": obj}
+            if isinstance(obj, dict):
+                raise ValueError(f"`{expected_type}` payload is malformed.")
+            return None
+
+        def _load_expression_fallback() -> Optional[dict]:
+            for candidate in (self.file_expression_smooth, self.file_expression):
+                path = self._local_file(candidate)
+                if path and os.path.exists(path):
+                    try:
+                        return read_expression(path)
+                    except Exception:
+                        continue
+            return None
+
+        def _load_pose_fallback() -> Optional[dict]:
+            for candidate in (self.file_pose_smooth, self.file_pose):
+                path = self._local_file(candidate)
+                if path and os.path.exists(path):
+                    try:
+                        return read_pose(path)
+                    except Exception:
+                        continue
+            return None
+
+        expr_supplied = expressions is not None
+        pose_supplied = pose is not None
+
+        expressions_payload = _normalize_payload(expressions, 'expression')
+        if expressions_payload is None and not expr_supplied:
+            expressions_payload = _load_expression_fallback()
+        if expressions_payload is None:
+            raise ValueError(
+                "`expressions` not provided and no fallback file found. "
+                "Run `fit()` first or provide expression coefficients explicitly."
+            )
+
+        pose_payload = _normalize_payload(pose, 'pose')
+        if pose_payload is None and not pose_supplied:
+            pose_payload = _load_pose_fallback()
+        if pose_payload is None:
+            raise ValueError(
+                "`pose` not provided and no fallback file found. "
+                "Run `fit()` first or provide pose parameters explicitly."
+            )
+
+        def _payload_dataframe(payload: Optional[dict]):
+            if payload is None:
+                return None
+            data = payload.get("data")
+            return data if hasattr(data, "iloc") else None
+
+        if out_dir is None:
+            if not self.output_dir:
+                raise ValueError("Output directory is not set. Call io(...) first or pass out_dir.")
+            out_dir = os.path.join(self.output_dir, "plots")
+        os.makedirs(out_dir, exist_ok=True)
+
+        target_num_frames = num_frames
+        if frames is None:
+            expr_df = _payload_dataframe(expressions_payload)
+            pose_df = _payload_dataframe(pose_payload)
+            if expr_df is not None and pose_df is not None:
+                total = max(1, min(len(expr_df), len(pose_df)))
+                target_num_frames = min(num_frames, total)
+
+        load_identity_assets = not (expr_supplied and pose_supplied)
+        shape_vertices = None
+        texture_values = None
+        illumination_values = None
+
+        if load_identity_assets:
+            shape_path = self._local_file(self.file_shape) if getattr(self, "file_shape", None) else None
+            if shape_path and os.path.exists(shape_path):
+                try:
+                    shape_vertices = np.loadtxt(shape_path, dtype=np.float32).reshape(-1, 3)
+                except Exception:
+                    shape_vertices = None
+
+            texture_path = self._local_file(self.file_texture) if getattr(self, "file_texture", None) else None
+            if texture_path and os.path.exists(texture_path):
+                try:
+                    texture_values = np.loadtxt(texture_path, dtype=np.float32)
+                except Exception:
+                    texture_values = None
+
+            illum_path = self._local_file(self.file_illumination) if getattr(self, "file_illumination", None) else None
+            if illum_path and os.path.exists(illum_path):
+                try:
+                    illumination_values = np.loadtxt(illum_path, dtype=np.float32)
+                except Exception:
+                    illumination_values = None
+
+        return _finish(visualize_bfm_expression_pose(
+            expressions=expressions_payload,
+            pose=pose_payload,
+            out_dir=out_dir,
+            num_frames=target_num_frames,
+            frames=frames,
+            processor=self,
+            identity_shape=shape_vertices,
+            vertex_texture=texture_values,
+            illumination=illumination_values,
+        ))
+        
         
     def preprocess(self):
         raise ValueError("Preprocess method is not implemented for the selected backend.")
