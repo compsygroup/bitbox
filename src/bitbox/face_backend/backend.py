@@ -26,7 +26,27 @@ from ..utilities import (
 from .reader3DI import read_expression, read_pose
 
 class FaceProcessor:
+    """Base class for GPU-backed face processing pipelines.
+
+    The class encapsulates all shared logic for running either local binaries or
+    remote API calls, configuring Docker/Singularity runtimes, and caching
+    intermediate outputs. Subclasses only implement the backend-specific steps
+    such as face detection, landmarking, and morphable-model fitting.
+    """
+
     def __init__(self, runtime=None, return_output='dict', server=None, verbose=True, debug=False):
+        """Initialize a processor instance and optionally attach to a remote API.
+
+        Args:
+            runtime: Path to a local backend install (e.g., `/opt/3DI`), or the
+                container image identifier when running inside Docker/Singularity.
+            return_output: Controls whether helper methods return file paths
+                (`'file'`), parsed dictionaries (`'dict'`), or nothing.
+            server: Optional mapping with ``host`` and ``port`` keys to execute
+                jobs remotely via the Bitbox API service.
+            verbose: When ``True`` logs progress for each executed step.
+            debug: Enables verbose runtime logging without changing ``verbose``.
+        """
         self.verbose = verbose
         self.debug = debug
         self.input_dir = None
@@ -85,6 +105,21 @@ class FaceProcessor:
             
     
     def _set_runtime(self, name='3DI', variable='BITBOX_3DI', executable='video_learn_identity', docker_path='/app/3DI'):
+        """Resolve where the backend executables live.
+
+        The method prefers an explicit ``runtime`` path, falls back to the
+        ``BITBOX_DOCKER`` container, and finally inspects the relevant
+        environment variable (``BITBOX_3DI`` by default).
+
+        Args:
+            name: Human readable name of the backend (only used in errors).
+            variable: Environment variable that stores the install path.
+            executable: File that must exist inside the install directory.
+            docker_path: Path that executables live in inside Docker images.
+
+        Raises:
+            ValueError: If a valid backend install cannot be located.
+        """
         # check if we are using a Docker image
         if self.runtime and detect_container_type(self.runtime):
             self.docker = self.runtime
@@ -110,6 +145,14 @@ class FaceProcessor:
     
     
     def _local_file(self, file_path):
+        """Translate Docker paths back into host paths.
+
+        Args:
+            file_path: Absolute path that may point inside the container mount.
+
+        Returns:
+            str: Path that can be accessed from the host filesystem.
+        """
         file_dir = os.path.dirname(file_path)
         
         if file_dir == self.docker_input_dir:
@@ -121,6 +164,16 @@ class FaceProcessor:
           
           
     def io(self, input_file, output_dir):
+        """Validate I/O paths and prime all intermediate filenames.
+
+        Args:
+            input_file: Video to process. Relative paths are resolved to abs paths.
+            output_dir: Directory where backend artifacts will be written.
+
+        Raises:
+            ValueError: If the file is missing, unsupported, or output_dir cannot
+                be created.
+        """
         # supported video extensions
         supported_extensions = ['mp4', 'avi', 'mpeg']
         
@@ -198,6 +251,19 @@ class FaceProcessor:
 
 
     def _remote_run_command(self, endpoint, files=None, data=None):
+        """Invoke the Bitbox API and synchronize any outputs.
+
+        Args:
+            endpoint: REST path relative to the configured API URL.
+            files: Optional multipart payload with file descriptors.
+            data: Optional form data to submit alongside the files.
+
+        Returns:
+            dict | None: JSON response body or ``None`` if nothing was returned.
+
+        Raises:
+            ValueError: When the server returns invalid ZIP payloads.
+        """
         url = self.API_url + endpoint
                 
         response = requests.post(url, files=files, data=data)
@@ -248,6 +314,18 @@ class FaceProcessor:
            
     
     def _run_command(self, executable, parameters, system_call):
+        """Run a backend binary either locally or inside a container.
+
+        Args:
+            executable: Name of the binary/script to execute.
+            parameters: Iterable of CLI parameters passed verbatim.
+            system_call: When ``True`` executes via the system shell, otherwise
+                the call is proxied through the remote API.
+
+        Raises:
+            ValueError: If required files are missing or the container type is
+                unsupported.
+        """
         # use a specific GPU with the least memory used
         gpu_id = select_gpu()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
@@ -319,6 +397,20 @@ class FaceProcessor:
     
     
     def _execute(self, executable, parameters, name, output_file_idx=-1, system_call=True):
+        """Run a backend step if its cached outputs are missing or stale.
+
+        Args:
+            executable: Command or function name to run.
+            parameters: Argument list passed to the executable.
+            name: Human-readable label for progress logging.
+            output_file_idx: Index (or indices) inside ``parameters`` pointing to
+                the expected output files so cache freshness can be checked.
+            system_call: Forwarded to :meth:`_run_command` to decide between shell
+                execution and Python function invocation.
+
+        Raises:
+            ValueError: If the command fails to generate the requested outputs.
+        """
         # we will prevent redundant calls to the server from the same caller method
         # for example, fit() method makes multiple calls to _execute method, but we only need to call the server once
         caller_frame = inspect.stack()[1]
@@ -413,7 +505,24 @@ class FaceProcessor:
             raise ValueError("Failed running %s" % name)
         
     def plot(self, data: dict, random_seed: int = 42, num_frames: int = 5, overlay: Optional[list] = None, 
+             rect_color: Optional[str] = None, landmark_color: Optional[str] = None,
              pose: Optional[dict] = None, video: bool = False, frames: Optional[List[int]] = None):
+        """Visualize rectangles, landmarks, expressions, or pose on the source video/grid.
+
+        Args:
+            data: Dict from Bitbox readers (rectangle, landmark, landmark-can, expression, or pose).
+            random_seed: Seed used when sampling representative frames.
+            num_frames: Number of frames exported to display when video toggle if false.
+            overlay: Optional rectangles/landmarks to draw alongside ``data``.
+            rect_color: CSS color for rectangles (applies to grids and video overlay; default red).
+            landmark_color: CSS color for landmarks/points (applies to grids and video overlay; default blue).
+            pose: Optional pose dictionary used for overlays and to pick pose diverse frames when ``video`` is False.
+            video: When ``True`` also writes an HTML/MP4 preview with overlays.
+            frames: Optional explicit frame indices to export instead of sampling.
+
+        Returns:
+            list[str] | str: Paths to generated plots (list) or video (single path).
+        """
 
         # helpers to parse overlay variants (list or dict) into landmark/rectangle pieces
         def _parse_overlay(ov) -> tuple:
@@ -464,6 +573,8 @@ class FaceProcessor:
                 pose=pose,
                 video=video,
                 frames=frames,
+                rect_color=rect_color,
+                landmark_color=landmark_color,
                 
             ))
 
@@ -480,6 +591,8 @@ class FaceProcessor:
                 pose=pose,
                 video=video,
                 frames=frames,
+                rect_color=rect_color,
+                landmark_color=landmark_color,
             ))
         
         if check_data_type(data, 'landmark-can'):
@@ -490,6 +603,8 @@ class FaceProcessor:
                 land_can=data,
                 pose=pose,
                 overlay=overlay,
+                rect_color=rect_color,
+                landmark_color=landmark_color,
                 video=video,
                 frames=frames,
             ))
@@ -512,6 +627,8 @@ class FaceProcessor:
                 video_path=video_path,
                 out_dir=out_dir,
                 overlay=overlay,
+                rect_color=rect_color,
+                landmark_color=landmark_color,
                 video=video,
                 frames=frames,
             ))
@@ -527,10 +644,17 @@ class FaceProcessor:
         frames: Optional[List[int]] = None,
     ):
         """
-        Generate the BFM expressions & pose visualization outside of ``plot``.
+        Generate BFM expression + pose visualizations without calling ``plot``.
 
-        When ``expressions`` and/or ``pose`` are omitted, pre-computed files from
-        the most recent 3DI run (e.g. ``*_expression_smooth.3DI``) are used.
+        Args:
+            expressions: Expression coefficients dict/DataFrame; falls back to the latest cached ``*_expression_smooth.3DI`` when ``None``.
+            pose: Pose dict/DataFrame; falls back to the latest cached pose file when ``None``.
+            out_dir: Output directory (defaults to ``<output_dir>/plots``).
+            num_frames: Max frames to export when sampling automatically.
+            frames: Optional explicit frame indices to render (overrides sampling).
+
+        Returns:
+            list[str] | str: Paths to generated plots/HTML.
         """
 
         start_time = time()
