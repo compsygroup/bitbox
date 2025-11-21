@@ -23,7 +23,7 @@ from ..utilities import (
     visualize_bfm_expression_pose,
     check_data_type,
 )
-from .reader3DI import read_expression, read_pose
+from .reader3DI import read_expression, read_pose, read_pose_lite
 
 class FaceProcessor:
     """Base class for GPU-backed face processing pipelines.
@@ -681,23 +681,38 @@ class FaceProcessor:
             return None
 
         def _load_expression_fallback() -> Optional[dict]:
-            for candidate in (self.file_expression_smooth, self.file_expression):
-                path = self._local_file(candidate)
-                if path and os.path.exists(path):
+            for candidate in (
+                self._local_file(self.file_expression_smooth),
+                self._local_file(self.file_expression),
+            ):
+                if candidate and os.path.exists(candidate):
                     try:
-                        return read_expression(path)
+                        return read_expression(candidate)
                     except Exception:
                         continue
             return None
 
         def _load_pose_fallback() -> Optional[dict]:
-            for candidate in (self.file_pose_smooth, self.file_pose):
-                path = self._local_file(candidate)
-                if path and os.path.exists(path):
-                    try:
-                        return read_pose(path)
-                    except Exception:
-                        continue
+            for candidate in (
+                self._local_file(self.file_pose_smooth),
+                self._local_file(self.file_pose),
+            ):
+                if not candidate or not os.path.exists(candidate):
+                    continue
+                try:
+                    # Lite pose files need landmarks to recover full Rodrigues.
+                    if str(candidate).lower().endswith("3dil"):
+                        landmarks_path = (
+                            self._local_file(self.file_landmarks)
+                            if getattr(self, "file_landmarks", None)
+                            else None
+                        )
+                        if landmarks_path and os.path.exists(landmarks_path):
+                            return read_pose_lite(candidate, landmarks_path)
+                    else:
+                        return read_pose(candidate)
+                except Exception:
+                    continue
             return None
 
         expr_supplied = expressions is not None
