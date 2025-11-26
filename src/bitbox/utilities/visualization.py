@@ -3234,7 +3234,8 @@ def visualize_bfm_expression_pose(
         expr_subset[..., 2] = delta_z + base_subset[:, 2]
 
         rot_chunk = rot_mats[start:end]
-        rot_chunk_oriented = np.matmul(rot_chunk, orientation_matrix_T)
+        rot_chunk_T = np.transpose(rot_chunk, (0, 2, 1))
+        rot_chunk_oriented = np.matmul(rot_chunk_T, orientation_matrix_T)
         expr_oriented = np.matmul(expr_subset, orientation_matrix_T)
         pose_oriented = np.matmul(base_subset[None, :, :], rot_chunk_oriented)
         combined_oriented = np.matmul(expr_subset, rot_chunk_oriented)
