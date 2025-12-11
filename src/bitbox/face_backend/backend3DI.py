@@ -1,6 +1,7 @@
 import os
 import warnings
 from importlib.metadata import version, PackageNotFoundError
+from typing import Any, Dict, Optional, Tuple, Union
 
 from .backend import FaceProcessor
 
@@ -13,7 +14,34 @@ from .reader3DI import read_expression, read_canonical_landmarks
 from .postProcess3DI import normalizeExpressions
 
 class FaceProcessor3DI(FaceProcessor):
-    def __init__(self, *args, camera_model=30, landmark_model='global4', morphable_model='BFMmm-19830', basis_model='0.0.1.F591-cd-K32d', fast=False, **kwargs):
+    """Full 3DI backend that drives the GPU pipeline end-to-end."""
+
+    def __init__(
+        self,
+        *args: Any,
+        camera_model: Union[int, float, str] = 30,
+        landmark_model: str = 'global4',
+        morphable_model: str = 'BFMmm-19830',
+        basis_model: str = '0.0.1.F591-cd-K32d',
+        fast: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        """Configure the 3DI processor with model variants and runtime tuning.
+
+        Args:
+            camera_model: Either a numeric field of view (degrees) or a path to a
+                camera calibration file containing intrinsics/extrinsics.
+            landmark_model: Name of the shipped 3DI landmark detector to use.
+            morphable_model: Morphable model identifier provided by the backend.
+            basis_model: Local expression basis applied inside
+                :meth:`localized_expressions`.
+            fast: When ``True`` switches to the lighter config preset.
+            *args: Forwarded to :class:`FaceProcessor` (e.g., ``return_output``).
+            **kwargs: Forwarded to :class:`FaceProcessor`.
+
+        Raises:
+            ValueError: If the runtime or config files cannot be located.
+        """
         # Run the parent class init
         super().__init__(*args, **kwargs)
 
@@ -52,7 +80,18 @@ class FaceProcessor3DI(FaceProcessor):
         self.base_metadata['local_bases'] = self.model_basis
             
     
-    def io(self, input_file=None, output_dir=None):
+    def io(self, input_file: Optional[str] = None, output_dir: Optional[str] = None) -> None:
+        """Extend the base :meth:`FaceProcessor.io` with optional undistortion.
+
+        Args:
+            input_file: Video that will be processed. Defaults to the previously
+                configured file if ``None``.
+            output_dir: Directory that will receive every intermediate file.
+
+        Raises:
+            ValueError: Propagated if the base method rejects the file or cannot
+                create ``output_dir``.
+        """
         # run the parent class io method
         super().io(input_file=input_file, output_dir=output_dir)
         
@@ -63,7 +102,16 @@ class FaceProcessor3DI(FaceProcessor):
             self.preprocess(undistort=True)
         
 
-    def preprocess(self, undistort=False):
+    def preprocess(self, undistort: bool = False) -> None:
+        """Optionally undistort the video prior to face detection.
+
+        Args:
+            undistort: When ``True`` run the backend's undistortion executable
+                using the configured ``camera_model`` parameters.
+
+        Raises:
+            ValueError: If required runtime files are missing or execution fails.
+        """
         # run undistortion if needed
         if undistort==True:
             # check if proper camera parameters are provided
@@ -77,7 +125,18 @@ class FaceProcessor3DI(FaceProcessor):
         self.file_input = self.file_input_prep
 
 
-    def detect_faces(self):
+    def detect_faces(self) -> Optional[Union[str, Tuple[str, ...], Dict[str, Any]]]:
+        """Detect faces across the input video and cache the rectangle file.
+
+        Returns:
+            Optional[Union[str, Tuple[str, ...], Dict[str, Any]]]: Path(s) to the
+            rectangles file when ``return_output == 'file'``, or the parsed
+            rectangle dictionary when ``return_output == 'dict'``. ``None`` when
+            outputs are suppressed.
+
+        Raises:
+            ValueError: If backend execution fails to generate the rectangles.
+        """
         self._execute('video_detect_face',
                       [self.file_input, self.file_rectangles],
                       "face detection",
@@ -91,7 +150,17 @@ class FaceProcessor3DI(FaceProcessor):
             return None
             
             
-    def detect_landmarks(self):
+    def detect_landmarks(self) -> Optional[Union[str, Tuple[str, ...], Dict[str, Any]]]:
+        """Run the 3DI landmark detector on the cached rectangles file.
+
+        Returns:
+            Optional[Union[str, Tuple[str, ...], Dict[str, Any]]]: File path or
+            parsed dictionary mirroring :meth:`detect_faces`.
+
+        Raises:
+            ValueError: If face detection has not been run or if landmark
+                estimation fails to produce an output.
+        """
         # check if face detection was run and successful
         if self.cache.check_file(self._local_file(self.file_rectangles), self.base_metadata) > 0:
             raise ValueError("Face detection is not run or failed. Please run face detection first.")
@@ -109,7 +178,24 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def fit(self, normalize=False, k=1):
+    def fit(self, normalize: bool = False, k: int = 1) -> Optional[Any]:
+        """Estimate identity, expression, and pose parameters for the video.
+
+        Args:
+            normalize: Whether to pass the smoothed expression coefficients through
+                :func:`normalizeExpressions`.
+            k: How many neighbours the normalizer should consider (only used when
+                ``normalize`` is ``True``).
+
+        Returns:
+            Optional[Any]: Tuple of output paths (``'file'`` mode), tuple of
+            dictionaries (``'dict'`` mode), or ``None`` when ``return_output`` is
+            set to suppress results.
+
+        Raises:
+            ValueError: If landmarks have not been computed or if any backend step
+                fails to produce its expected files.
+        """
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -185,7 +271,19 @@ class FaceProcessor3DI(FaceProcessor):
             return None
         
 
-    def localized_expressions(self, normalize=True):
+    def localized_expressions(self, normalize: bool = True) -> Optional[Any]:
+        """Project global expressions into localized coefficients.
+
+        Args:
+            normalize: Whether to normalize the localized coefficients inside the
+                3DI post-processing script.
+
+        Returns:
+            Optional[Any]: Output path or dictionary depending on ``return_output``.
+
+        Raises:
+            ValueError: If :meth:`fit` has not been executed successfully.
+        """
         # check if canonical landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_expression_smooth), self.base_metadata) > 0:
             raise ValueError("Expression quantification is not run or failed. Please run fit() method first.")
@@ -203,7 +301,19 @@ class FaceProcessor3DI(FaceProcessor):
             return None
 
 
-    def run_all(self, normalize=True, k=1):
+    def run_all(self, normalize: bool = True, k: int = 1) -> Optional[Any]:
+        """Execute the entire 3DI pipeline in sequence.
+
+        Args:
+            normalize: Forwarded to :meth:`fit`.
+            k: Forwarded to :meth:`fit`.
+
+        Returns:
+            Optional[Any]: Tuple of outputs mirroring the cumulative results of
+            :meth:`detect_faces`, :meth:`detect_landmarks`, :meth:`fit`, and
+            :meth:`localized_expressions`, or ``None`` when no outputs are
+            requested.
+        """
         rect = self.detect_faces()
         land = self.detect_landmarks()
         if self.return_output == 'file':
@@ -223,7 +333,8 @@ class FaceProcessor3DI(FaceProcessor):
             return None
 
 
-    def citation(self):
+    def citation(self) -> None:
+        """Print BibTeX-style references describing the 3DI processing chain."""
         try:
             bb_version = version("bitbox")
         except PackageNotFoundError:
@@ -249,7 +360,26 @@ class FaceProcessor3DI(FaceProcessor):
         print(text)
         
 class FaceProcessor3DIlite(FaceProcessor3DI):
-    def __init__(self, *args, morphable_model='BFMmm-23660', basis_model='local_basis_FacialBasis1.0', **kwargs):
+    """Lightweight wrapper around the 3DI-lite executables."""
+
+    def __init__(
+        self,
+        *args: Any,
+        morphable_model: str = 'BFMmm-23660',
+        basis_model: str = 'local_basis_FacialBasis1.0',
+        **kwargs: Any,
+    ) -> None:
+        """Configure the lite backend, which merges identity/pose estimation.
+
+        Args:
+            *args: Forwarded to :class:`FaceProcessor3DI`.
+            morphable_model: Morphable model identifier bundled with 3DI-Lite.
+            basis_model: Local basis used for :meth:`localized_expressions`.
+            **kwargs: Forwarded to :class:`FaceProcessor3DI`.
+
+        Raises:
+            ValueError: If 3DI-Lite executable paths cannot be resolved.
+        """
         # Run the parent class init
         super().__init__(*args, **kwargs)
         self.model_morphable = morphable_model
@@ -276,7 +406,20 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         self.base_metadata['local_bases'] = self.model_basis   
         
                 
-    def fit(self, normalize=False, k=1):
+    def fit(self, normalize: bool = False, k: int = 1) -> Optional[Any]:
+        """Run the single 3DI-Lite binary to estimate expressions and pose.
+
+        Args:
+            normalize: When ``True`` applies lite-specific normalization profiles.
+            k: Neighborhood parameter for :func:`normalizeExpressions`.
+
+        Returns:
+            Optional[Any]: Tuple of output file paths (``'file'`` mode), tuple of
+            parsed dictionaries (``'dict'`` mode), or ``None`` when suppressed.
+
+        Raises:
+            ValueError: If landmarks were not computed or backend execution fails.
+        """
         # check if landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_landmarks), self.base_metadata) > 0:
             raise ValueError("Landmark detection is not run or failed. Please run landmark detection first.")
@@ -300,7 +443,9 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
                 self._local_file(self.file_texture_coeff),
                 self._local_file(self.file_illumination),
                 self._local_file(self.file_pose_smooth),
-                self._local_file(self.file_landmarks_canonicalized)
+                self._local_file(self.file_landmarks_canonicalized),
+                self._local_file(self.file_shape),
+                self._local_file(self.file_texture)
             )
             return files
         elif self.return_output == 'dict':
@@ -314,7 +459,20 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
         else:
             return None
         
-    def localized_expressions(self, normalize=True):
+    def localized_expressions(self, normalize: bool = True) -> Optional[Any]:
+        """Compute localized expression coefficients for 3DI-Lite outputs.
+
+        Args:
+            normalize: Whether to request normalized coefficients from the helper
+                script.
+
+        Returns:
+            Optional[Any]: Output location or dictionary mirroring ``return_output``.
+
+        Raises:
+            ValueError: If :meth:`fit` (and therefore expression smoothing) has not
+                yet been executed.
+        """
         # check if canonical landmark detection was run and successful
         if self.cache.check_file(self._local_file(self.file_expression_smooth), self.base_metadata) > 0:
             raise ValueError("Expression quantification is not run or failed. Please run fit() method first.")
@@ -332,7 +490,8 @@ class FaceProcessor3DIlite(FaceProcessor3DI):
             return None
 
 
-    def citation(self):
+    def citation(self) -> None:
+        """Print citation text for studies processed with 3DI-Lite."""
         try:
             bb_version = version("bitbox")
         except PackageNotFoundError:
