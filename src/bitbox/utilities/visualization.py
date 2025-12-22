@@ -456,6 +456,8 @@ def visualize_and_export(
     pose: Optional[dict] = None,
     video: bool = False,     
     frames: Optional[List[int]] = None,   # when True, embed video with overlays instead of frame grid
+    rect_color: Optional[str] = None,
+    landmark_color: Optional[str] = None,
 ):
     """Flexible rectangles/landmarks plotter.
 
@@ -473,6 +475,9 @@ def visualize_and_export(
 
     def _pick(a, b, want: str) -> Optional[dict]:
         return a if _dtype(a) == want else (b if _dtype(b) == want else None)
+
+    rect_color = rect_color or "red"
+    landmark_color = landmark_color or "blue"
 
     # Resolve sources
     rects_src = _pick(rects, overlay, "rectangle")
@@ -553,6 +558,8 @@ def visualize_and_export(
                 fps=fps,
                 video_w=vw,
                 video_h=vh,
+                rect_color=rect_color,
+                landmark_color=landmark_color,
             )
             return
         except Exception as e:
@@ -710,6 +717,8 @@ def visualize_and_export(
             main_type="rect",
             ncols=ncols,
             blurred_crops=blurred_crops,
+            rect_color=rect_color,
+            landmark_color=landmark_color,
         )
     else:
         # landmarks as main, no rectangle overlays
@@ -720,6 +729,8 @@ def visualize_and_export(
             main_type="landmark",
             ncols=ncols,
             blurred_crops=blurred_crops,
+            rect_color=rect_color,
+            landmark_color=landmark_color,
         )
 
     html_path = os.path.join(out_dir, "bitbox_viz.html")
@@ -737,7 +748,9 @@ def visualize_and_export_can_land(
     pose: Optional[dict] = None,       # used only to diversify selection in static grid
     land_can: Optional[dict] = None,   # canonicalized landmarks (frame-indexed DataFrame expected)
     video: bool = False,               # when True: left = video, right = live 3D canonicalized landmarks
-    frames: Optional[List[int]] = None # explicit frame indices for STATIC grid mode
+    frames: Optional[List[int]] = None, # explicit frame indices for STATIC grid mode
+    rect_color: Optional[str] = None,
+    landmark_color: Optional[str] = None,
 ):
     """
     When video=False (default): multi-column static frame row + 3D canonicalized landmarks row.
@@ -757,6 +770,9 @@ def visualize_and_export_can_land(
     def _dtype(d: Optional[dict]) -> Optional[str]:
         return d.get("type") if isinstance(d, dict) else None
 
+    rect_color = rect_color or "red"
+    landmark_color = landmark_color or "blue"
+
     def _find_col(df, candidates):
         # graceful local fallback if caller doesn't define _find_col elsewhere
         try:
@@ -772,6 +788,9 @@ def visualize_and_export_can_land(
         except Exception:
             pass
         return None
+
+    rect_color = rect_color or "red"
+    landmark_color = landmark_color or "blue"
 
     # Resolve inputs
     can_df  = _safe_df(land_can)
@@ -884,6 +903,8 @@ def visualize_and_export_can_land(
             portrait_w=360,
             portrait_h=480,
             can3d_decimate=1,   # bump to 2/3 if perf is tight
+            rect_color=rect_color,
+            landmark_color=landmark_color,
         )
         return
 
@@ -1011,7 +1032,7 @@ def visualize_and_export_can_land(
                     fig.add_shape(
                         type="rect",
                         x0=bx, y0=by, x1=bx + bw, y1=by + bh,
-                        line=dict(color="red", width=2),
+                        line=dict(color=rect_color, width=2),
                         row=1, col=i + 1,
                     )
                     if fig.layout.shapes:
@@ -1028,7 +1049,7 @@ def visualize_and_export_can_land(
                         go.Scatter(
                             x=xs_crop, y=ys_crop,
                             mode="markers",
-                            marker=dict(color="blue", size=5, symbol="circle"),
+                            marker=dict(color=landmark_color, size=5, symbol="circle"),
                             name="Landmarks",
                             showlegend=False,
                         ),
@@ -1063,7 +1084,7 @@ def visualize_and_export_can_land(
                 go.Scatter(
                     x=xs_crop, y=ys_crop,
                     mode="markers",
-                    marker=dict(color="blue", size=5, symbol="circle"),
+                    marker=dict(color=landmark_color, size=5, symbol="circle"),
                     name="Landmarks",
                     showlegend=False,
                 ),
@@ -1081,7 +1102,7 @@ def visualize_and_export_can_land(
                     fig.add_shape(
                         type="rect",
                         x0=x_rel, y0=y_rel, x1=x_rel + w_rel, y1=y_rel + h_rel,
-                        line=dict(color="red", width=2),
+                        line=dict(color=rect_color, width=2),
                         row=1, col=i + 1,
                     )
                     if fig.layout.shapes:
@@ -1131,7 +1152,7 @@ def visualize_and_export_can_land(
             go.Scatter3d(
                 x=xyz[:, 0], y=xyz[:, 1], z=-xyz[:, 2],
                 mode="markers",
-                marker=dict(size=3, color="blue"),
+                marker=dict(size=3, color=landmark_color),
                 name=f"Frame {fid}",
             ),
             row=2, col=i + 1,
@@ -1247,7 +1268,9 @@ def visualize_and_export_pose(
     num_frames: int = 5,
     overlay: Optional[dict] = None,
     video: bool = False,                # when True and video_path provided: left = video, right = live 3D pose axes
-    frames: Optional[List[int]] = None  # NEW: explicit frame indices for GRID selection
+    frames: Optional[List[int]] = None,  # NEW: explicit frame indices for GRID selection
+    rect_color: Optional[str] = None,
+    landmark_color: Optional[str] = None,
 ):
     """Render a 3D pose axis visualization (grid) and, if video is provided,
     also emit a 'video-format' HTML using write_video_overlay_html with pose axes.
@@ -1386,6 +1409,8 @@ def visualize_and_export_pose(
             title="Video + Head Pose (3D axes)",
             cushion_ratio=0.35,
             fixed_portrait=True, portrait_w=360, portrait_h=480,
+            rect_color=rect_color,
+            landmark_color=landmark_color,
         )
         return
 
@@ -1586,7 +1611,7 @@ def visualize_and_export_pose(
                         fig.add_shape(
                             type="rect",
                             x0=xr, y0=yr, x1=xr + wr, y1=yr + hr,
-                            line=dict(color="red", width=2),
+                            line=dict(color=rect_color, width=2),
                             row=1, col=i + 1,
                         )
                         rect_shape_indices.append(len(fig.layout.shapes) - 1)
@@ -1605,7 +1630,7 @@ def visualize_and_export_pose(
                         go.Scatter(
                             x=xs_c, y=ys_c,
                             mode="markers",
-                            marker=dict(color="blue", size=5, symbol="circle"),
+                            marker=dict(color=landmark_color, size=5, symbol="circle"),
                             name="Landmarks",
                             showlegend=False,
                         ),
@@ -1855,6 +1880,8 @@ def make_centered_subplot_with_overlay(
     main_title: Optional[str] = None,
     add_overlay_toggle: bool = True,
     blurred_crops: Optional[Sequence[np.ndarray]] = None,
+    rect_color: str = "red",
+    landmark_color: str = "red",
 ):
     """Build a tightly packed grid of cropped images with overlays.
 
@@ -1931,7 +1958,7 @@ def make_centered_subplot_with_overlay(
                 y0=y_rel,
                 x1=x_rel + w,
                 y1=y_rel + h,
-                line=dict(color="red", width=2),
+                line=dict(color=rect_color, width=2),
                 row=row,
                 col=col,
             )
@@ -1948,7 +1975,7 @@ def make_centered_subplot_with_overlay(
                     x=xs_crop,
                     y=ys_crop,
                     mode="markers",
-                    marker=dict(color="blue", size=5, symbol="circle"),
+                    marker=dict(color=landmark_color, size=5, symbol="circle"),
                     name="Landmarks",
                     showlegend=False,
                 ),
@@ -1961,17 +1988,17 @@ def make_centered_subplot_with_overlay(
             if main_type == "rect":
                 xs_overlay, ys_overlay = overlay_items[idx]
                 fig.add_trace(
-                    go.Scatter(
-                        x=xs_overlay,
-                        y=ys_overlay,
-                        mode="markers",
-                        name="Overlay",
-                        marker=dict(color="blue", size=5, symbol="circle"),
-                        visible=True,
-                        showlegend=False,
-                    ),
-                    row=row,
-                    col=col,
+                go.Scatter(
+                    x=xs_overlay,
+                    y=ys_overlay,
+                    mode="markers",
+                    name="Overlay",
+                    marker=dict(color=landmark_color, size=5, symbol="circle"),
+                    visible=True,
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
                 )
                 overlay_trace_indices.append(len(fig.data) - 1)
             elif main_type == "landmark":
@@ -1984,7 +2011,7 @@ def make_centered_subplot_with_overlay(
                         y=y_seq,
                         mode="lines",
                         name="Overlay",
-                        line=dict(color="red", width=2, dash="dash"),
+                        line=dict(color=rect_color, width=2, dash="dash"),
                         visible=True,
                         showlegend=False,
                     ),
@@ -3207,7 +3234,8 @@ def visualize_bfm_expression_pose(
         expr_subset[..., 2] = delta_z + base_subset[:, 2]
 
         rot_chunk = rot_mats[start:end]
-        rot_chunk_oriented = np.matmul(rot_chunk, orientation_matrix_T)
+        rot_chunk_T = np.transpose(rot_chunk, (0, 2, 1))
+        rot_chunk_oriented = np.matmul(rot_chunk_T, orientation_matrix_T)
         expr_oriented = np.matmul(expr_subset, orientation_matrix_T)
         pose_oriented = np.matmul(base_subset[None, :, :], rot_chunk_oriented)
         combined_oriented = np.matmul(expr_subset, rot_chunk_oriented)
@@ -4072,6 +4100,8 @@ def write_video_overlay_html(
     video_h: Optional[int] = None,
     title: str = "Video Overlay",
     cushion_ratio: float = 0.25,
+    rect_color: str = "red",
+    landmark_color: str = "rgba(255,0,0,0.95)",
     fixed_portrait: bool = True,
     portrait_w: int = 360,
     portrait_h: int = 480,
@@ -4092,6 +4122,9 @@ def write_video_overlay_html(
         import pandas as pd  # type: ignore
     except Exception:
         pd = None  # type: ignore
+
+    rect_color = rect_color or "red"
+    landmark_color = landmark_color or "blue"
 
     # ---------- helpers ----------
     def _to_df(obj) -> "pd.DataFrame":
@@ -4252,6 +4285,9 @@ def write_video_overlay_html(
     has_expr_for_3d = (not has_can3d) and (not has_pose) and bool(has_expr_raw)
     has_3d_any = has_can3d or has_pose or has_expr_for_3d
     has_expr_any = bool(has_expr_raw)  # governs new 2D plots + sidebar
+
+    rect_color_js = _json.dumps(rect_color)
+    land_color_js = _json.dumps(landmark_color)
 
     local_prefixes = ('lb','rb','no','le','re','ul','ll','mo')
 
@@ -4427,6 +4463,8 @@ def write_video_overlay_html(
   const CAN3D_CHUNK_STARTS = __CAN3D_CHUNK_STARTS__;
   const POSE_CHUNK_STARTS  = __POSE_CHUNK_STARTS__;
   const CUSHION = __CUSHION__;
+  const RECT_COLOR = __RECT_COLOR__;
+  const LAND_COLOR = __LAND_COLOR__;
   const BOX_W = __BOX_W__;
   const BOX_H = __BOX_H__;
   const POSE_UNITS = "__POSE_UNITS__";
@@ -5458,16 +5496,16 @@ async function exportComposite(){
     }
 
     if (HAS_RECTS && showRects && rects) {
-      octx.strokeStyle = 'red'; octx.lineWidth = 2; octx.globalAlpha = 0.9;
+      octx.strokeStyle = RECT_COLOR; octx.lineWidth = 2; octx.globalAlpha = 0.9;
       for (const r of rects) {
         octx.strokeRect((r.x - sx)*s + dx, (r.y - sy)*s + dy, r.w*s, r.h*s);
       }
     }
     if (HAS_LANDS && showLands && lands) {
-      octx.fillStyle = 'rgba(0,102,255,0.95)';
+      octx.fillStyle = LAND_COLOR;
       for (const p of lands) {
         const px = (p[0]-sx)*s + dx, py = (p[1]-sy)*s + dy;
-        octx.beginPath(); octx.arc(px, py, 2.2, 0, 2*Math.PI); octx.fill();
+        octx.beginPath(); octx.arc(px, py, 2.8, 0, 2*Math.PI); octx.fill();
       }
     }
 
@@ -5550,6 +5588,8 @@ async function exportComposite(){
             .replace("__CAN3D_CHUNK_STARTS__", _json.dumps(can3d_chunk_starts))
             .replace("__POSE_CHUNK_STARTS__", _json.dumps(pose_chunk_starts))
             .replace("__CUSHION__", f"{float(cushion_ratio):.6f}")
+            .replace("__RECT_COLOR__", rect_color_js)
+            .replace("__LAND_COLOR__", land_color_js)
             .replace("__RECTS_JSON__", rects_json)
             .replace("__LANDS_JSON__", lands_json)
             .replace("__CAN3D_JSON__", can3d_json)
