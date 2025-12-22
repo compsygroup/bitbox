@@ -761,27 +761,43 @@ class FaceProcessor:
         texture_values = None
         illumination_values = None
 
+        def _fallback_candidates(primary: Optional[str], fallback_ext: str) -> List[str]:
+            if not primary:
+                return []
+            base, ext = os.path.splitext(primary)
+            return [primary, base + fallback_ext] if ext.lower() != fallback_ext.lower() else [primary]
+
         if load_identity_assets:
-            shape_path = self._local_file(self.file_shape) if getattr(self, "file_shape", None) else None
-            if shape_path and os.path.exists(shape_path):
-                try:
-                    shape_vertices = np.loadtxt(shape_path, dtype=np.float32).reshape(-1, 3)
-                except Exception:
-                    shape_vertices = None
+            # Prefer backend-native assets; for 3DI-lite fall back to .3DI meshes when .3DIl is missing.
+            shape_candidates = _fallback_candidates(getattr(self, "file_shape", None), ".3DI")
+            for candidate in shape_candidates:
+                shape_path = self._local_file(candidate)
+                if shape_path and os.path.exists(shape_path):
+                    try:
+                        shape_vertices = np.loadtxt(shape_path, dtype=np.float32).reshape(-1, 3)
+                        break
+                    except Exception:
+                        shape_vertices = None
 
-            texture_path = self._local_file(self.file_texture) if getattr(self, "file_texture", None) else None
-            if texture_path and os.path.exists(texture_path):
-                try:
-                    texture_values = np.loadtxt(texture_path, dtype=np.float32)
-                except Exception:
-                    texture_values = None
+            texture_candidates = _fallback_candidates(getattr(self, "file_texture", None), ".3DI")
+            for candidate in texture_candidates:
+                texture_path = self._local_file(candidate)
+                if texture_path and os.path.exists(texture_path):
+                    try:
+                        texture_values = np.loadtxt(texture_path, dtype=np.float32)
+                        break
+                    except Exception:
+                        texture_values = None
 
-            illum_path = self._local_file(self.file_illumination) if getattr(self, "file_illumination", None) else None
-            if illum_path and os.path.exists(illum_path):
-                try:
-                    illumination_values = np.loadtxt(illum_path, dtype=np.float32)
-                except Exception:
-                    illumination_values = None
+            illum_candidates = _fallback_candidates(getattr(self, "file_illumination", None), ".3DI")
+            for candidate in illum_candidates:
+                illum_path = self._local_file(candidate)
+                if illum_path and os.path.exists(illum_path):
+                    try:
+                        illumination_values = np.loadtxt(illum_path, dtype=np.float32)
+                        break
+                    except Exception:
+                        illumination_values = None
 
         return _finish(visualize_bfm_expression_pose(
             expressions=expressions_payload,

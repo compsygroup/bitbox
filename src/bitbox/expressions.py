@@ -6,6 +6,16 @@ import pandas as pd
 
 # Calculate asymmetry scores using mirror error approach
 def asymmetry(landmarks, axis=0, normalize=True):
+    """Per-frame facial asymmetry using mirrored landmark error.
+
+    Args:
+        landmarks: Landmark dict from the face backend (2D or 3D, canonical ok).
+        axis: 0 if rows are frames (default); 1 if rows are signals.
+        normalize: If True, rescale scores using empirical reference ranges.
+
+    Returns:
+        pandas.DataFrame with per-frame asymmetry for eye, brow, nose, mouth, and overall.
+    """
     # check data type
     if not check_data_type(landmarks, ['landmark', 'landmark-can']):
         raise ValueError("Only 'landmark' data can be used for asymmetry calculation. Make sure to use the correct data type.")
@@ -102,8 +112,19 @@ def asymmetry(landmarks, axis=0, normalize=True):
 
 
 def expressivity(activations, axis=0, scales=None, aggregate=False, robust=True, fps=30, verbose=False):
-    """
-    scales:   either the number of time scales to be considered or a list of time scales in seconds, or None (using the original signal)
+    """Peak-based expressivity statistics across time scales.
+
+    Args:
+        activations: Expression activations dict from the backend.
+        axis: 0 if rows are frames (default); 1 if rows are signals.
+        scales: Number of time scales, explicit list of scales (sec), or None for raw signal.
+        aggregate: If True, aggregate peaks across scales.
+        robust: Remove outliers (IQR) before computing stats.
+        fps: Frames per second for the time base.
+        verbose: If True, log when no peaks are found.
+
+    Returns:
+        List of pandas.DataFrame per signal with columns scale, frequency, density, mean, std, min, max.
     """
     
     # check data type
@@ -164,8 +185,19 @@ def expressivity(activations, axis=0, scales=None, aggregate=False, robust=True,
 
 
 def diversity(activations, axis=0, magnitude=True, scales=None, aggregate=False, robust=True, fps=30):
-    """
-    scales:   either the number of time scales to be considered (default, 6) or a list of time scales in seconds
+    """Entropy-style diversity of expression peaks across time scales.
+
+    Args:
+        activations: Expression activations dict from the backend.
+        axis: 0 if rows are frames (default); 1 if rows are signals.
+        magnitude: If True, weight peaks by activation magnitude; otherwise use binary peaks.
+        scales: Number of time scales (default 6) or list of scales (sec).
+        aggregate: If True, aggregate peaks across scales.
+        robust: Remove outliers (IQR) before computing stats.
+        fps: Frames per second for the time base.
+
+    Returns:
+        pandas.DataFrame with scale-wise overall entropy and frame-wise average entropy.
     """
     
     # check data type

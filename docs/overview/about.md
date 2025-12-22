@@ -47,12 +47,25 @@ If you utilize Bitbox in your research or projects, kindly acknowledge the creat
 
 **Main Bitbox publication:**
 
-Coming soon
+```latex
+@article{Sariyanidi2025Bitbox,
+author = {Sariyanidi, Evangelos and Nair, Gokul and Yankowitz, Lisa and Zampella, Casey J. and Pargi, Mohan Kashyap and Manakiwala, Aashvi and McNealis, Maya and Herrington, John D. and Cohn, Jeffrey and Schultz, Robert T. and Tunc, Birkan},
+title = {Bitbox: Behavioral Imaging Toolbox for Computational Analysis of Behavior from Videos},
+journal = {arXiv},
+year = {2025},
+eprint = {2512.17655},
+archivePrefix = {arXiv},
+primaryClass = {cs.CV},
+doi = {10.48550/arXiv.2512.17655},
+url = {https://arxiv.org/abs/2512.17655},
+note = {arXiv:2512.17655}
+}
+```
 
 **If you use 3DI:**
 
 ```latex
-@article{
+@article{Sariyanidi20243DI,
 author={Evangelos Sariyanidi and Casey J. Zampella and Robert T. Schultz and Birkan Tunç},
 journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
 title={Inequality-Constrained 3D Morphable Face Model Fitting},
@@ -66,7 +79,7 @@ doi={10.1109/TPAMI.2023.3334948}}
 **If you use 3DI-lite or Facial Basis (localized expression units):**
 
 ```latex
-@inproceedings{
+@inproceedings{Sariyanidi2025Basis,
 author = {Evangelos Sariyanidi and Lisa Yankowitz and Robert T. Schultz and John D. Herrington and Birkan Tunç and Jeffrey Cohn},
 title = {Beyond FACS: Data-driven facial expression dictionaries, with application to predicting autism},
 booktitle = {Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG)},
