@@ -23,6 +23,7 @@ from ..utilities import (
     visualize_bfm_expression_pose,
     check_data_type,
 )
+from ..utilities.frame_checks import frame_rows_match, should_check_frame_rows
 from .reader3DI import read_expression, read_pose, read_pose_lite
 
 class FaceProcessor:
@@ -161,6 +162,15 @@ class FaceProcessor:
             return os.path.join(self.output_dir, os.path.basename(file_path))
         else:
             return file_path
+
+    def validate_frame_rows(self, data_path: Optional[str], error_message: str) -> None:
+        """Validate that frame-indexed outputs align with the input video."""
+        if not data_path:
+            raise ValueError(error_message)
+        data_local = self._local_file(data_path)
+        input_local = self._local_file(self.file_input) if self.file_input else None
+        if not frame_rows_match(data_local, input_local):
+            raise ValueError(error_message)
           
           
     def io(self, input_file, output_dir):
@@ -438,9 +448,27 @@ class FaceProcessor:
     
         # check if the output file already exists, if not run the executable
         file_exits = 0
+        output_paths = []
         for idx in output_file_idx:
-            tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=verbose)
+            output_path = self._local_file(parameters[idx])
+            output_paths.append(output_path)
+            tmp = self.cache.check_file(output_path, self.base_metadata, verbose=verbose)
             file_exits = max(file_exits, tmp)
+
+        # validate cached frame-indexed outputs and force rerun if mismatched
+        if file_exits == 0 and not self.API:
+            input_local = self._local_file(self.file_input) if self.file_input else None
+            mismatch = False
+            for output_path in output_paths:
+                if should_check_frame_rows(output_path) and not frame_rows_match(output_path, input_local):
+                    mismatch = True
+                    break
+            if mismatch:
+                if verbose:
+                    print(f"Frames do not match. Rerunning {name}.")
+                for output_path in output_paths:
+                    self.cache.delete_old_file(output_path)
+                file_exits = 2
         
         # run the executable if needed
         if file_exits > 0: # file does not exist, has different metadata, or it is older than the retention period
@@ -485,6 +513,17 @@ class FaceProcessor:
                 file_generated = max(file_generated, tmp)
             
             if file_generated == 0: # file is generated (0 means the file is found)
+                if not self.API:
+                    input_local = self._local_file(self.file_input) if self.file_input else None
+                    mismatch = False
+                    for output_path in output_paths:
+                        if should_check_frame_rows(output_path) and not frame_rows_match(output_path, input_local):
+                            mismatch = True
+                            break
+                    if mismatch:
+                        for output_path in output_paths:
+                            self.cache.delete_old_file(output_path)
+                        raise ValueError(f"Frames do not match. Rerun {name}.")
                 # store metadata
                 additional_metadata = {
                     'cmd': cmd,

@@ -25,59 +25,6 @@ def parse_retention_period(period_str):
     return retention_period_timedelta
 
 
-def _should_check_frame_rows(file_path):
-    base = os.path.basename(file_path)
-    tokens = (
-        "_rects",
-        "_landmarks",
-        "_expression",
-        "_pose",
-    )
-    return any(token in base for token in tokens)
-
-
-def _count_data_rows(file_path):
-    try:
-        with open(file_path, "r", errors="ignore") as f:
-            return sum(1 for line in f if line.strip())
-    except OSError:
-        return None
-
-
-def _probe_video_frame_count(video_path):
-    try:
-        import cv2
-    except Exception:
-        return None
-
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return None
-    try:
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    finally:
-        cap.release()
-
-    if frame_count <= 0:
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            return None
-        count = 0
-        try:
-            while True:
-                ret, _ = cap.read()
-                if not ret:
-                    break
-                count += 1
-        finally:
-            cap.release()
-        frame_count = count
-
-    if frame_count <= 0:
-        return None
-    return frame_count
-
-
 class FileCache:
     def __init__(self, json_required=True, retention_period='6 months'):
         self.json_required = json_required
@@ -131,31 +78,9 @@ class FileCache:
                                 print("An older file, %s, is found with the same metadata; however, it is older than the retention period. A new file will be generated." % file_name)
                             status = 2
                         else:
-                            row_mismatch = False
-                            row_count = None
-                            expected_counts = None
-                            if _should_check_frame_rows(file_path):
-                                input_path = old_metadata.get('input')
-                                if input_path and os.path.exists(input_path):
-                                    frame_count = _probe_video_frame_count(input_path)
-                                    if frame_count:
-                                        expected_counts = {frame_count}
-                                        if frame_count > 1:
-                                            expected_counts.add(frame_count - 1)
-                                        row_count = _count_data_rows(file_path)
-                                        row_mismatch = (row_count is None) or (row_count not in expected_counts)
-                            
-                            if row_mismatch:
-                                if verbose:
-                                    if row_count is None:
-                                        print("Row count check failed for %s. A new file will be generated." % file_name)
-                                    else:
-                                        print("Row count mismatch for %s: %d rows (expected %s). A new file will be generated." % (file_name, row_count, sorted(expected_counts)))
-                                status = 2
-                            else:
-                                if verbose:
-                                    print("A recent file, %s, is found with the same metadata. Old file will be used." % file_name)
-                                status = 0
+                            if verbose:
+                                print("A recent file, %s, is found with the same metadata. Old file will be used." % file_name)
+                            status = 0
                     else: # there is no time information in the old metadata
                         if verbose:
                             print("An older file, %s, is found with the same metadata, but missing time information. A new file will be generated." % file_name)
