@@ -26,9 +26,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ARG DLIB_VERSION=19.24.6
 ARG OPENFACE_REF=OpenFace_2.2.0
 
-COPY bitbox/docker/entrypoint.sh /entrypoint.sh
-
-
 RUN set -eux; \
     cd /tmp; \
     wget -q "https://github.com/davisking/dlib/archive/refs/tags/v${DLIB_VERSION}.tar.gz" -O dlib.tar.gz; \
@@ -62,8 +59,7 @@ RUN set -eux; \
 RUN set -eux; \
     mkdir -p "${OPENFACE_CONFIG_DIR}/classifiers" "${OPENFACE_DIR}/classifiers"; \
     cp /usr/local/share/opencv4/haarcascades/haarcascade_frontalface_alt.xml "${OPENFACE_CONFIG_DIR}/classifiers/"; \
-    ln -sf "${OPENFACE_CONFIG_DIR}/classifiers/haarcascade_frontalface_alt.xml" "${OPENFACE_DIR}/classifiers/haarcascade_frontalface_alt.xml"; \
-    chmod +x /entrypoint.sh
+    ln -sf "${OPENFACE_CONFIG_DIR}/classifiers/haarcascade_frontalface_alt.xml" "${OPENFACE_DIR}/classifiers/haarcascade_frontalface_alt.xml"
 
 WORKDIR /app
 
