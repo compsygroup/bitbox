@@ -376,11 +376,12 @@ class FaceProcessor:
             if self.docker and (self.docker.endswith("sandbox") or self.docker.endswith(".sif")):
                 cmd += "\""   # Close the double quotes for bash -c
                 
-            # suppress the output of the command. check whether we are on a Windows or Unix-like system
-            if os.name == 'nt': # Windows
-                cmd += ' > NUL'
-            else: # Unix-like systems (Linux, macOS)
-                cmd += ' > /dev/null'
+            # suppress command output unless debug mode is enabled
+            if not self.debug:
+                if os.name == 'nt': # Windows
+                    cmd += ' > NUL 2>&1'
+                else: # Unix-like systems (Linux, macOS)
+                    cmd += ' > /dev/null 2>&1'
             
             # @TODO: remove this part when the 3DI code is updated so that we don't need to change the working directory
             # set the working directory to the executable directory
@@ -406,7 +407,7 @@ class FaceProcessor:
         return cmd
     
     
-    def _execute(self, executable, parameters, name, output_file_idx=-1, system_call=True):
+    def _execute(self, executable, parameters, name, output_file_idx=-1, system_call=True, expected_outputs: Optional[Sequence[str]] = None):
         """Run a backend step if its cached outputs are missing or stale.
 
         Args:
@@ -417,6 +418,8 @@ class FaceProcessor:
                 the expected output files so cache freshness can be checked.
             system_call: Forwarded to :meth:`_run_command` to decide between shell
                 execution and Python function invocation.
+            expected_outputs: Optional explicit output file paths to track when the
+                executable does not receive them directly as command arguments.
 
         Raises:
             ValueError: If the command fails to generate the requested outputs.
@@ -442,16 +445,20 @@ class FaceProcessor:
                 
         status = False
         
-        # get the output file name
-        if not isinstance(output_file_idx, list):
-            output_file_idx = [output_file_idx]
-    
+        # get the output file names
+        if expected_outputs is None:
+            if not isinstance(output_file_idx, list):
+                output_file_idx = [output_file_idx]
+            expected_output_paths = [self._local_file(parameters[idx]) for idx in output_file_idx]
+        else:
+            if isinstance(expected_outputs, str):
+                expected_output_paths = [self._local_file(expected_outputs)]
+            else:
+                expected_output_paths = [self._local_file(path) for path in expected_outputs]
+
         # check if the output file already exists, if not run the executable
         file_exits = 0
-        output_paths = []
-        for idx in output_file_idx:
-            output_path = self._local_file(parameters[idx])
-            output_paths.append(output_path)
+        for output_path in expected_output_paths:
             tmp = self.cache.check_file(output_path, self.base_metadata, verbose=verbose)
             file_exits = max(file_exits, tmp)
 
@@ -459,14 +466,14 @@ class FaceProcessor:
         if file_exits == 0 and not self.API:
             input_local = self._local_file(self.file_input) if self.file_input else None
             mismatch = False
-            for output_path in output_paths:
+            for output_path in expected_output_paths:
                 if should_check_frame_rows(output_path) and not frame_rows_match(output_path, input_local):
                     mismatch = True
                     break
             if mismatch:
                 if verbose:
                     print(f"Frames do not match. Rerunning {name}.")
-                for output_path in output_paths:
+                for output_path in expected_output_paths:
                     self.cache.delete_old_file(output_path)
                 file_exits = 2
         
@@ -478,8 +485,8 @@ class FaceProcessor:
             # @TODO: also we need to consider multiple output files
             if file_exits == 2:
                 # delete this loop after resolving above @TODO
-                for idx in output_file_idx:
-                    self.cache.delete_old_file(self._local_file(parameters[idx]))
+                for output_path in expected_output_paths:
+                    self.cache.delete_old_file(output_path)
                 #output_file = self.cache.get_new_file_name(output_file)  # uncomment after resolving above @TODO
                 #parameters[output_file_idx] = output_file  # uncomment after resolving above @TODO
             
@@ -506,8 +513,8 @@ class FaceProcessor:
             
             # check if the command was successful
             file_generated = 0
-            for idx in output_file_idx:
-                tmp = self.cache.check_file(self._local_file(parameters[idx]), self.base_metadata, verbose=False, json_required=False, retention_period='5 minutes')
+            for output_path in expected_output_paths:
+                tmp = self.cache.check_file(output_path, self.base_metadata, verbose=False, json_required=False, retention_period='5 minutes')
                 # if tmp > 0:
                 #     print(f"{self._local_file(parameters[idx])} was not generated.")
                 file_generated = max(file_generated, tmp)
@@ -516,12 +523,12 @@ class FaceProcessor:
                 if not self.API:
                     input_local = self._local_file(self.file_input) if self.file_input else None
                     mismatch = False
-                    for output_path in output_paths:
+                    for output_path in expected_output_paths:
                         if should_check_frame_rows(output_path) and not frame_rows_match(output_path, input_local):
                             mismatch = True
                             break
                     if mismatch:
-                        for output_path in output_paths:
+                        for output_path in expected_output_paths:
                             self.cache.delete_old_file(output_path)
                         raise ValueError(f"Frames do not match. Rerun {name}.")
                 # store metadata
@@ -531,8 +538,8 @@ class FaceProcessor:
                     'output': self.output_dir
                 }
                 metadata = {**self.base_metadata, **additional_metadata}
-                for idx in output_file_idx:                
-                    self.cache.store_metadata(self._local_file(parameters[idx]), metadata)
+                for output_path in expected_output_paths:
+                    self.cache.store_metadata(output_path, metadata)
                     
                 status = True
             else:
