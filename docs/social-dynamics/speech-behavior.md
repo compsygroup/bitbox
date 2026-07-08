@@ -13,6 +13,10 @@ layout:
     visible: true
   metadata:
     visible: false
+  tags:
+    visible: true
+  actions:
+    visible: true
 ---
 
 # Speech Behavior
