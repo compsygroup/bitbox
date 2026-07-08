@@ -1,6 +1,22 @@
 import json
+import math
 import os
 from typing import Optional, Set
+
+# Allowed row-count gap vs video frame count. Override via BITBOX_FRAME_TOLERANCE.
+DEFAULT_FRAME_TOLERANCE_ABS = 10
+DEFAULT_FRAME_TOLERANCE_REL = 0.001  # 0.1% of frame count
+
+
+def frame_tolerance(frame_count: int) -> int:
+    override = os.environ.get("BITBOX_FRAME_TOLERANCE")
+    if override is not None:
+        try:
+            return max(0, int(override))
+        except ValueError:
+            pass
+    return max(DEFAULT_FRAME_TOLERANCE_ABS,
+               math.ceil(frame_count * DEFAULT_FRAME_TOLERANCE_REL))
 
 
 def count_data_rows(file_path: str) -> Optional[int]:
@@ -46,10 +62,10 @@ def probe_video_frame_count(video_path: str) -> Optional[int]:
 
 
 def expected_row_counts(frame_count: int) -> Set[int]:
-    counts = {frame_count}
-    if frame_count > 1:
-        counts.add(frame_count - 1)
-    return counts
+    tol = frame_tolerance(frame_count)
+    lo = max(0, frame_count - tol)
+    hi = frame_count + tol
+    return set(range(lo, hi + 1))
 
 
 def resolve_frame_count_source(data_path: str, fallback_input_path: Optional[str]) -> Optional[str]:
@@ -86,7 +102,7 @@ def frame_rows_match(data_path: str, fallback_input_path: Optional[str]) -> bool
     if row_count is None:
         return False
 
-    return row_count in expected_row_counts(frame_count)
+    return abs(row_count - frame_count) <= frame_tolerance(frame_count)
 
 
 def should_check_frame_rows(file_path: Optional[str]) -> bool:
