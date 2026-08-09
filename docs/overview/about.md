@@ -27,7 +27,9 @@ Bitbox is an easy-to-use computational toolbox to fill the gap between engineeri
 
 ### Team
 
-Bitbox is being developed at Children’s Hospital Philadelphia and the University of Pennsylvania. The core development team consists of computational scientists and engineers, psychologists and behavioral scientists, and software developers, who design, develop, implement, test, and document all tools in collaboration.
+Bitbox is being developed by the Computational Psychology and Psychiatry (**ComPsy**) Group at Children’s Hospital Philadelphia and the University of Pennsylvania. The core development team consists of computational scientists and engineers, psychologists and behavioral scientists, and software developers, who design, develop, implement, test, and document all tools in collaboration.
+
+<figure><img src="../.gitbook/assets/compsy_group_full.png" alt=""><figcaption></figcaption></figure>
 
 {% columns %}
 {% column width="58.333333333333336%" %}
@@ -93,4 +95,3 @@ pages = {1--10},
 doi = {10.48550/arXiv.2505.24679},
 }
 ```
-
