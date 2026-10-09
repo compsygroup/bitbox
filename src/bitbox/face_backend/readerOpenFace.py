@@ -32,8 +32,10 @@ def read_landmarks(file):
     else:
         raise ValueError(f"Unrecognized landmark schema: {num_landmarks} landmarks.")
 
-    # stored as [x_0..x_67, y_0..y_67], label accordingly
-    column_list = [f'x{i}' for i in range(num_landmarks)] + [f'y{i}' for i in range(num_landmarks)]
+    # OpenFace stores [x_0..x_67, y_0..y_67]; reorder to interleaved [x0, y0, x1, y1, ...] so the
+    # (frames, landmarks, dimension) reshape done downstream lands on the right values
+    _data = _data.reshape(-1, 2, num_landmarks).transpose(0, 2, 1).reshape(-1, 2 * num_landmarks)
+    column_list = [f'{c}{i}' for i in range(num_landmarks) for c in 'xy']
     data = pd.DataFrame(_data, columns=column_list)
 
     return {
@@ -57,10 +59,10 @@ def read_canonical_landmarks(file):
     else:
         raise ValueError(f"Unrecognized landmark schema: {num_landmarks} landmarks.")
 
-    # stored as [X_0..X_67, Y_0..Y_67, Z_0..Z_67], label accordingly
-    column_list = ([f'x{i}' for i in range(num_landmarks)]
-                   + [f'y{i}' for i in range(num_landmarks)]
-                   + [f'z{i}' for i in range(num_landmarks)])
+    # stored as [X_0..X_67, Y_0..Y_67, Z_0..Z_67]; reorder to interleaved [x0, y0, z0, x1, ...]
+    # for the same reason as in read_landmarks
+    _data = _data.reshape(-1, 3, num_landmarks).transpose(0, 2, 1).reshape(-1, 3 * num_landmarks)
+    column_list = [f'{c}{i}' for i in range(num_landmarks) for c in 'xyz']
     data = pd.DataFrame(_data, columns=column_list)
 
     return {

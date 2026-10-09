@@ -4,7 +4,7 @@ import shutil
 from typing import Any, Optional
 
 from .backend import FaceProcessor
-from .readerOpenFace import split_csv_to_of
+from .readerOpenFace import split_csv_to_of, read_expression
 
 
 class FaceProcessorOpenFace(FaceProcessor):
@@ -90,6 +90,35 @@ class FaceProcessorOpenFace(FaceProcessor):
 
         if self.return_output == 'file':
             return self.split_files if split else None
+        return None
+
+    def action_units(self):
+        """FACS Action Unit intensities, ready for ``expressivity()`` and ``diversity()``.
+
+        Not comparable to the 3DI backends' :meth:`localized_expressions`: these are regressed
+        FACS intensities (0-5 scale), not coefficients on a localized basis.
+
+        Returns:
+            In 'dict' mode, an ``expression`` dict holding only the 17 intensity columns
+            (``AU*_r``); the binary ``AU*_c`` flags are dropped because they distort peak
+            statistics. In 'file' mode, the path of the action-unit file, which still has all
+            35 columns. ``None`` when outputs are suppressed.
+
+        Raises:
+            ValueError: If :meth:`fit` has not been run.
+        """
+        if not self.split_files or 'action_units' not in self.split_files:
+            raise ValueError("Action units are not available. Please run fit() first.")
+
+        path = self._local_file(self.split_files['action_units'])
+        if self.return_output == 'file':
+            return path
+        elif self.return_output == 'dict':
+            exp = read_expression(path)
+            exp['data'] = exp['data'][exp['intensity_columns']]
+            exp['format'] = 'for each frame (rows) Action Unit intensities (_r)'
+            exp['presence_columns'] = []
+            return exp
         return None
 
     def _build_split_metadata(self, csv_path):

@@ -15,6 +15,19 @@ def landmarks_left_right(schema='ibug51'):
                'lm': np.array([31,32,33,43,44,50,42,41]), # excluding shared ones [34,45,49,40]   #ul: list(range(31, 37))+list(range(43, 47))
                'rm': np.array([37,36,35,47,46,48,38,39]) #ll: list(range(37, 43))+list(range(47, 51))
               } 
+    elif schema == 'multipie68':
+        # 68-point (iBUG/Multi-PIE) scheme, 0-indexed. r[i] mirrors l[i], so 'l' is not always the
+        # lower index (e.g. the 59/55 mouth pair).
+        # Dropped: midline points (27-30, 33, 51, 57, 62, 66) and the jaw (0-16), as in ibug51.
+        idx = {'lb': np.array([17,18,19,20,21]),
+               'rb': np.array([26,25,24,23,22]),
+               'lno': np.array([31,32]),
+               'rno': np.array([35,34]),
+               'le': np.array([36,37,38,39,40,41]),
+               're': np.array([45,44,43,42,47,46]),
+               'lm': np.array([48,49,50,59,58,60,61,67]),
+               'rm': np.array([54,53,52,55,56,64,63,65])
+              }
     # elif schema == 'ibug51_mirrored':
     #     idx = {'lb': np.array([9,8,7,6,5]),
     #            'rb': np.array([4,3,2,1,0]),
@@ -31,8 +44,9 @@ def landmarks_left_right(schema='ibug51'):
 
 # Landmarks used to fit the whole-face mirror plane. Both sets sit on or near the midline and move
 # little with expression. ibug51: 22/25 are the inner eye corners, 10-13 the nose bridge.
-_MIRROR_ANCHOR_PAIRS = {'ibug51': [(22, 25)]}
-_MIRROR_ANCHOR_MID = {'ibug51': [10, 11, 12, 13]}
+# multipie68: 39/42 are the inner eye corners, 27-30 the nose bridge.
+_MIRROR_ANCHOR_PAIRS = {'ibug51': [(22, 25)], 'multipie68': [(39, 42)]}
+_MIRROR_ANCHOR_MID = {'ibug51': [10, 11, 12, 13], 'multipie68': [27, 28, 29, 30]}
 
 def face_mirror_plane(coords, schema='ibug51', smooth=5):
     """Whole-face mirror plane (the face's median/midsagittal plane), one per frame.
