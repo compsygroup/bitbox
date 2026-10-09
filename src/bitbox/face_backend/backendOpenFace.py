@@ -4,7 +4,17 @@ import shutil
 from typing import Any, Optional
 
 from .backend import FaceProcessor
-from .readerOpenFace import split_csv_to_of, read_expression
+from .readerOpenFace import (
+    split_csv_to_of, read_confidence, read_rectangles, read_landmarks, read_canonical_landmarks,
+    read_pose, read_gaze, read_eye_landmarks, read_expression, read_shape_params,
+)
+
+# order matches the of_names list in fit(); defines the 'dict'/'file' return order below
+_OF_READERS = {
+    'confidence': read_confidence, 'rects': read_rectangles, 'landmarks_2d': read_landmarks,
+    'landmarks_3d': read_canonical_landmarks, 'pose': read_pose, 'gaze': read_gaze,
+    'eye_landmarks': read_eye_landmarks, 'action_units': read_expression, 'shape_params': read_shape_params,
+}
 
 
 class FaceProcessorOpenFace(FaceProcessor):
@@ -41,17 +51,25 @@ class FaceProcessorOpenFace(FaceProcessor):
         output_root = self.docker_output_dir if self.docker is not None else self.output_dir
         self.file_openface_csv = os.path.join(output_root, f'{self.file_input_base}.csv')
 
-    def fit(self, split=True) -> Optional[str]:
+    def fit(self, split=True) -> Optional[Any]:
         """Run OpenFace feature extraction for the configured input video.
 
         Args:
             split: If True, automatically split the output CSV into separate
                 files at runtime (default True). Split files are stored in
                 self.split_files as a dict mapping type names to file paths.
+
+        Returns:
+            Optional[Any]: Tuple of output paths, in ``of_names`` order (``'file'`` mode);
+            tuple of parsed dictionaries in the same order (``'dict'`` mode, matching how the
+            3DI backends return several dicts from one ``fit()`` call); or ``None``.
+            ``None`` in every mode when ``split=False``, since nothing was split to return.
         """
+        of_names = ['confidence', 'rects', 'landmarks_2d', 'landmarks_3d',
+                    'pose', 'gaze', 'eye_landmarks', 'action_units', 'shape_params']
+
+        all_cached = False
         if split:
-            of_names = ['confidence', 'rects', 'landmarks_2d', 'landmarks_3d',
-                        'pose', 'gaze', 'eye_landmarks', 'action_units', 'shape_params']
             of_paths = [os.path.join(self.output_dir, f'{self.file_input_base}_{name}.OF')
                         for name in of_names]
             all_cached = all(
@@ -59,66 +77,51 @@ class FaceProcessorOpenFace(FaceProcessor):
             )
             if all_cached:
                 self.split_files = {name: path for name, path in zip(of_names, of_paths)}
-                if self.return_output == 'file':
-                    return self.split_files
-                return None
 
-        self._execute(
-            'FeatureExtraction',
-            [
-                '-f',
-                self.file_input,
-                '-out_dir',
-                self.docker_output_dir if self.docker is not None else self.output_dir,
-            ],
-            'feature extraction',
-            expected_outputs=[self.file_openface_csv],
-        )
+        if not all_cached:
+            self._execute(
+                'FeatureExtraction',
+                [
+                    '-f',
+                    self.file_input,
+                    '-out_dir',
+                    self.docker_output_dir if self.docker is not None else self.output_dir,
+                ],
+                'feature extraction',
+                expected_outputs=[self.file_openface_csv],
+            )
 
-        csv_path = self.file_openface_csv
-        if self.docker is not None:
-            csv_path = self._local_file(csv_path)
+            csv_path = self.file_openface_csv
+            if self.docker is not None:
+                csv_path = self._local_file(csv_path)
 
-        if split and csv_path and os.path.isfile(csv_path):
-            self.split_files = split_csv_to_of(csv_path, self.output_dir)
-            metadata = self._build_split_metadata(csv_path)
-            for path in self.split_files.values():
-                self.cache.store_metadata(path, metadata)
+            if split and csv_path and os.path.isfile(csv_path):
+                self.split_files = split_csv_to_of(csv_path, self.output_dir)
+                metadata = self._build_split_metadata(csv_path)
+                for path in self.split_files.values():
+                    self.cache.store_metadata(path, metadata)
 
-        # Clean up OpenFace artifacts (CSV, JSON, HOG, AVI, aligned frames)
-        self._cleanup_openface_artifacts(csv_path)
+            # Clean up OpenFace artifacts (CSV, JSON, HOG, AVI, aligned frames)
+            self._cleanup_openface_artifacts(csv_path)
 
-        if self.return_output == 'file':
-            return self.split_files if split else None
-        return None
-
-    def action_units(self):
-        """FACS Action Unit intensities, ready for ``expressivity()`` and ``diversity()``.
-
-        Not comparable to the 3DI backends' :meth:`localized_expressions`: these are regressed
-        FACS intensities (0-5 scale), not coefficients on a localized basis.
-
-        Returns:
-            In 'dict' mode, an ``expression`` dict holding only the 17 intensity columns
-            (``AU*_r``); the binary ``AU*_c`` flags are dropped because they distort peak
-            statistics. In 'file' mode, the path of the action-unit file, which still has all
-            35 columns. ``None`` when outputs are suppressed.
-
-        Raises:
-            ValueError: If :meth:`fit` has not been run.
-        """
-        if not self.split_files or 'action_units' not in self.split_files:
-            raise ValueError("Action units are not available. Please run fit() first.")
-
-        path = self._local_file(self.split_files['action_units'])
-        if self.return_output == 'file':
-            return path
+        if not split:
+            return None
+        elif self.return_output == 'file':
+            return tuple(self.split_files[name] for name in of_names)
         elif self.return_output == 'dict':
-            exp = read_expression(path)
-            exp['data'] = exp['data'][exp['intensity_columns']]
-            exp['format'] = 'for each frame (rows) Action Unit intensities (_r)'
-            exp['presence_columns'] = []
-            return exp
+            results = []
+            for name in of_names:
+                path = self._local_file(self.split_files[name])
+                out = _OF_READERS[name](path)
+                if name == 'action_units':
+                    # keep only the 17 continuous intensity columns (AU*_r); the binary presence
+                    # flags (AU*_c) are dropped because they distort peak-based statistics in
+                    # expressivity()/diversity()
+                    out['data'] = out['data'][out['intensity_columns']]
+                    out['format'] = 'for each frame (rows) Action Unit intensities (_r)'
+                    out['presence_columns'] = []
+                results.append(out)
+            return tuple(results)
         return None
 
     def _build_split_metadata(self, csv_path):
