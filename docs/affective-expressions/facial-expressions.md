@@ -13,6 +13,10 @@ layout:
     visible: true
   metadata:
     visible: false
+  tags:
+    visible: true
+  actions:
+    visible: true
 ---
 
 # Facial Expressions
@@ -38,7 +42,7 @@ lands2D = processor.detect_landmarks()
 exp_global, pose, lands3D = processor.fit()
 ```
 
-Landmarks can be used to compute [biomechanical properties](broken-reference), [symmetry](symmetry.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
+Landmarks can be used to compute [biomechanical properties](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/biomechanics), [symmetry](symmetry.md), and [social dynamics](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/social-dynamics) of facial expressions.&#x20;
 
 ### Expression Related Global Deformations
 
@@ -51,7 +55,7 @@ An alternative method for studying facial expressions involves using per-frame e
 exp_global, pose, lands3D = processor.fit()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](broken-reference) of facial expressions.&#x20;
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_global` contains 79 coefficients (presence levels of 79 deformations) per frame. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/social-dynamics) of facial expressions.&#x20;
 
 By default, global expression coefficients will have varying scales/magnitudes. You can normalize them to have similar scales. This process also removes estimated noise, so you may end up with losing some data. Although we highly recommend using this option, please use with caution.
 
@@ -74,7 +78,7 @@ Due to significant structural limitations of automated AU detectors (see [this a
 exp_local = processor.localized_expressions()
 ```
 
-As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](broken-reference) of facial expressions.
+As explained in [output formats](../overview/outputs.md#facial-expressions), the variable `exp_local` contains 32 (3DI) or 50 (3DI-lite) coefficients per frame, each quantifying the presence level of a facial expression unit. These coefficients can be used to compute [expressivity](expressivity.md), [diversity](diversity.md), and [social dynamics](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/social-dynamics) of facial expressions.
 
 {% hint style="warning" %}
 The ongoing research by our team on localized expression units chiefly uses 3DI-lite, thus **local expression units using 3DI-lite may give better results than using 3DI**.&#x20;

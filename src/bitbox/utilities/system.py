@@ -35,13 +35,20 @@ def detect_container_type(image):
         return "singularity"
     elif image.endswith(".sif"):
         return "singularity"
-    elif not bool(os.path.dirname(image)):
-        # check if docker image exists locally
-        completed = subprocess.run(
-            ["docker", "images", "-q", image.lower()],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        if completed.returncode == 0:
+    elif not os.path.isdir(image):
+        # Not a local directory, so treat it as a Docker/Podman image reference.
+        # Image refs may include a registry/namespace prefix (e.g. localhost/bitbox:openface),
+        # so we must not reject names containing '/'.
+        try:
+            completed = subprocess.run(
+                ["docker", "images", "-q", image.lower()],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+            )
+        except FileNotFoundError:
+            return None
+        # `docker images -q` prints an image ID only when the image exists locally;
+        # the return code is 0 even when nothing matches, so check the output.
+        if completed.returncode == 0 and completed.stdout.strip():
             return "docker"
 
     return None

@@ -13,6 +13,10 @@ layout:
     visible: false
   metadata:
     visible: false
+  tags:
+    visible: true
+  actions:
+    visible: true
 ---
 
 # Introduction

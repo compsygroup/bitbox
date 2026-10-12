@@ -86,6 +86,7 @@ RUN cp /app/3DI/models/opencv_face_detector* models/
 RUN cp /app/3DI/models/tf2onnx_onnx_model.onnx models/
 RUN cp -r /app/3DI/models/landmark_models models/
 RUN cp -r /app/3DI/models/dat_files models/
+RUN cp -r /app/3DI/models/cameras models/
 RUN cp -r /app/3DI/models/MMs/ models/
 RUN cp -r /app/3DI/scripts/produce_canonicalized_3Dlandmarks.py .
 
