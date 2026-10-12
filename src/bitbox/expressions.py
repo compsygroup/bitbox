@@ -5,27 +5,20 @@ import numpy as np
 import pandas as pd
 
 # Calculate asymmetry scores using mirror error approach
-def asymmetry(landmarks, axis=0, normalize=False, mirror='face', smooth=5):
+def asymmetry(landmarks, axis=0, smooth=5):
     """Per-frame facial asymmetry using mirrored landmark error.
+
+    Every feature is mirrored across one whole-face plane per frame, fitted to the inner eye
+    corners and nose bridge, so positional asymmetry is measured.
 
     Args:
         landmarks: Landmark dict from the face backend (2D or 3D, canonical ok).
         axis: 0 if rows are frames (default); 1 if rows are signals.
-        normalize: If True, rescale scores using empirical reference ranges. Only available with
-            mirror='feature'; the ranges have not been measured for mirror='face' yet, which is why
-            this defaults to False.
-        mirror: 'face' (default) mirrors every feature across one whole-face plane per frame, fitted
-            to the inner eye corners and nose bridge, so positional asymmetry is measured. 'feature'
-            is the previous behaviour: each feature is mirrored across the bisector of its own two
-            half-centroids, which cancels positional asymmetry.
-        smooth: frames of median smoothing applied to the fitted plane; ignored when mirror='feature'.
+        smooth: frames of median smoothing applied to the fitted plane.
 
     Returns:
         pandas.DataFrame with per-frame asymmetry for eye, brow, nose, mouth, and overall.
     """
-    if mirror not in ('face', 'feature'):
-        raise ValueError("mirror must be 'face' or 'feature'")
-
     # check data type
     if not check_data_type(landmarks, ['landmark', 'landmark-can']):
         raise ValueError("Only 'landmark' data can be used for asymmetry calculation. Make sure to use the correct data type.")
@@ -37,7 +30,6 @@ def asymmetry(landmarks, axis=0, normalize=False, mirror='face', smooth=5):
     if axis == 1:
         data = data.T
     
-    processor = landmarks['backend']
     dimension = landmarks['dimension']
     schema = landmarks['schema']
     
@@ -65,74 +57,30 @@ def asymmetry(landmarks, axis=0, normalize=False, mirror='face', smooth=5):
     all_coords = data.reshape((T, data.shape[1] // dimension, dimension))
     
     # the whole-face plane is smoothed over time, so it is fitted once for the entire series
-    if mirror == 'face':
-        plane_n, plane_c = face_mirror_plane(all_coords, schema=schema, smooth=smooth)
-    
+    plane_n, plane_c = face_mirror_plane(all_coords, schema=schema, smooth=smooth)
+
     # for each frame, compute asymmetry scores for each feature, plus the overall score (average of all)
     # use per-frame plane reflection (no fixed x-flip)
     asymmetry_scores = np.full((T, len(feature_idx_left.keys())+1), np.nan)
-    
+
     for t in range(T):
         coords = all_coords[t]
 
-        # Compute mirrored error for each feature
+        # Compute mirrored error for each feature, reflecting right across the whole-face plane
+        # shared by all features in this frame
+        n = plane_n[t]
+        c = plane_c[t]
         for i, feat in enumerate(feature_idx_left.keys()):
             xl = coords[feature_idx_left[feat], :]
             xr = coords[feature_idx_right[feat], :]
-            
-            if mirror == 'face':
-                # reflect right across the whole-face plane, shared by all features in this frame
-                n = plane_n[t]
-                c = plane_c[t]
-                xrm = xr - 2.0 * ((xr - c) @ n)[:, None] * n  # Householder reflection
-            else:
-                # reflect right across the perpendicular-bisector plane between centroids
-                cL = xl.mean(axis=0)
-                cR = xr.mean(axis=0)
-                n = cR - cL
-                nn = np.linalg.norm(n)
-                if nn > 1e-8: 
-                    n = n / nn
-                    c = 0.5 * (cL + cR)
-                    xrm = xr - 2.0 * ((xr - c) @ n)[:, None] * n  # Householder reflection
-                else: # fallback if features coincide (degenerate)
-                    xrm = xr
-            
+            xrm = xr - 2.0 * ((xr - c) @ n)[:, None] * n  # Householder reflection
+
             score = np.mean(np.sqrt(np.sum((xl-xrm)**2, axis=1)))
             asymmetry_scores[t, i] = score
         asymmetry_scores[t, -1] = np.mean(asymmetry_scores[t, 0:-1])
-    
+
     column_names = list(feature_idx_left.keys())+['overall']
-    _scores = pd.DataFrame(data=asymmetry_scores, columns=column_names)
-    
-    # normalze scores based on expected landmark errors for perfectly symmetric faces
-    # and extreme values generated from Jim Carrey videos
-    if normalize:
-        if mirror == 'face':
-            # the reference ranges below were measured with mirror='feature' and read ~3x lower than
-            # this mirror does, so they must not be reused here. Not yet measured for mirror='face'.
-            raise ValueError("Normalization is not available for mirror='face' yet: the reference ranges "
-                             "have only been measured for mirror='feature'. Call with normalize=False.")
-        elif dimension == 3: # 3D canonicalized landmarks
-            if processor == '3DI':
-                min_sym = pd.Series({"eye":0.5801, "brow":0.7857, "nose":0.0965, "mouth":1.0076, "overall":0.6172}) # 50 perc (median) of sym
-                max_jim = pd.Series({"eye":3.1310, "brow":2.2180, "nose":1.4357, "mouth":5.5638, "overall":2.4260}) # 99 perc of jim
-            elif processor == '3DIl':
-                min_sym = pd.Series({"eye":0.5321, "brow":0.8457, "nose":0.1585, "mouth":1.0731, "overall":0.6547}) # 50 perc (median) of sym
-                max_jim = pd.Series({"eye":1.4455, "brow":2.3044, "nose":0.7789, "mouth":3.1907, "overall":1.4160}) # 99 perc of jim
-            else:
-                raise ValueError("Data is from an unsupported backend processor. Normalization cannot be applied.")
-                
-            asymmetry_scores = ((_scores - min_sym) / (max_jim - min_sym)).clip(lower=0)
-        elif dimension == 2: # 2D landmarks
-            min_sym = pd.Series({"eye":0.9330, "brow":1.1110, "nose":0.0001, "mouth":0.7021, "overall":0.7689})
-            asymmetry_scores = (_scores - min_sym).clip(lower=0)
-        else:
-            raise ValueError("Unsupported dimension for asymmetry normalization. Use 2D or 3D landmarks.")
-    else:
-        asymmetry_scores = _scores
-        
-    return asymmetry_scores
+    return pd.DataFrame(data=asymmetry_scores, columns=column_names)
 
 
 def expressivity(activations, axis=0, scales=None, aggregate=False, robust=True, fps=30, verbose=False):
