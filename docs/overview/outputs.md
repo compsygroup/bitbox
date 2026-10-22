@@ -13,6 +13,10 @@ layout:
     visible: true
   metadata:
     visible: false
+  tags:
+    visible: true
+  actions:
+    visible: true
 ---
 
 # Outputs
@@ -61,7 +65,7 @@ processor = FP(runtime='bitbox:latest', return_output=None)
 
 ### Output Formats
 
-Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Biomechanics](broken-reference), [Affective Expressions](../affective-expressions/facial-expressions.md), and [Social Dynamics](broken-reference) sections.
+Below is a list of common components of face and body analysis pipelines and their associated outputs.  The wrapper functions generate these _raw_ behavioral signals, which serve as inputs for analysis functions to produce behavioral measurements. Details on outputs of analysis functions are given in [Biomechanics](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/biomechanics), [Affective Expressions](../affective-expressions/facial-expressions.md), and [Social Dynamics](https://app.gitbook.com/s/DmCBFRIodH5I7F0cvCfy/social-dynamics) sections.
 
 #### Face Rectangles
 
